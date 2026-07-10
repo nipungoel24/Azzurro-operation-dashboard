@@ -665,7 +665,7 @@ export default function Home() {
   }, [tasks]);
 
   return (
-    <div className={`flex h-screen font-sans antialiased overflow-hidden selection:bg-[#dfd7f3] transition-colors duration-300 ${darkMode ? 'bg-[#181614] text-slate-200' : 'bg-[#faf8f5] text-slate-700'}`}>
+    <div className={`flex h-screen font-sans antialiased overflow-hidden selection:bg-[#dfd7f3] transition-colors duration-300 ${darkMode ? 'dark bg-[#181614] text-slate-200' : 'bg-[#faf8f5] text-slate-700'}`}>
       
       {/* Toast Notification Banner */}
       {toast && (
@@ -691,9 +691,11 @@ export default function Home() {
         {/* Top Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 flex-shrink-0">
           <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Task Schedule</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              {activeView === 'board' ? 'Task Schedule' : 'Location Checklists'}
+            </span>
             <h2 className="text-3xl font-black font-serif-display leading-tight tracking-tight mt-1">
-              Daily Operations
+              {activeView === 'board' ? 'Daily Operations' : 'Trackers & Exports'}
             </h2>
           </div>
 

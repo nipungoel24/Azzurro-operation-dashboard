@@ -28,7 +28,7 @@ export default function Sidebar({
         )}
         <button 
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className={`p-1 rounded-lg transition-colors cursor-pointer text-slate-400 hover:text-slate-850 ${darkMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100/60'}`}
+          className={`p-1.5 rounded-lg transition-colors cursor-pointer text-[#877d6c] dark:text-[#a8a090] ${darkMode ? 'hover:bg-[#38332c] hover:text-white' : 'hover:bg-[#e7e1d3] hover:text-[#3d3730]'}`}
           title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         >
           {sidebarCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
@@ -82,41 +82,42 @@ export default function Sidebar({
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">New Task</span>}
         </button>
 
-        {/* Theme Mode Switcher in Sidebar */}
-        {!sidebarCollapsed && (
-          <button 
-            onClick={toggleDarkMode}
-            className={`w-full flex items-center rounded-lg transition-all text-[14px] cursor-pointer gap-4 px-3 py-2.5 mt-4 ${darkMode ? 'text-[#a8a090] hover:bg-[#38332c] hover:text-white' : 'text-[#877d6c] hover:bg-[#e7e1d3] hover:text-[#5c5446]'}`}
-            title="Toggle Dark Mode"
-          >
-            {darkMode ? <Icons.Sun /> : <Icons.Moon />}
-            <span className="animate-fade-in font-medium">{darkMode ? 'Light Theme' : 'Dark Theme'}</span>
-          </button>
-        )}
+        {/* Theme Mode Switcher in Sidebar (Moved to footer) */}
       </nav>
 
       {/* Footer Area retractable view */}
       <div className={`p-4 mt-auto border-t flex flex-col items-start gap-3 ${sidebarCollapsed ? 'py-6 items-center w-full' : 'p-6 pb-8'} ${darkMode ? 'border-[#3d3730]' : 'border-[#e3ded0]'}`}>
-         {!sidebarCollapsed && (
-           <div className="w-full animate-fade-in flex items-center gap-3">
-             <span 
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-xs cursor-help flex-shrink-0 ${darkMode ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-800'}`} 
-              title="NG - Logged in as nipun24.goel@gmail.com"
-             >
-               NG
-             </span>
-             <div className="flex-1 min-w-0">
-               <p className="text-[10px] text-slate-400 font-medium leading-none mb-1">Logged in as:</p>
-               <p className={`text-[12px] font-bold truncate ${darkMode ? 'text-slate-200' : 'text-[#5c5446]'}`}>nipun24.goel@gmail.com</p>
-               <button 
-                onClick={handleLogout}
-                className="text-[11px] text-red-500 hover:text-red-750 transition-colors font-extrabold cursor-pointer mt-1 block"
-               >
-                 Logout
-               </button>
-             </div>
-           </div>
-         )}
+          {!sidebarCollapsed && (
+            <div className="w-full animate-fade-in flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <span 
+                 className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-xs cursor-help flex-shrink-0 ${darkMode ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-800'}`} 
+                 title="NG - Logged in as nipun24.goel@gmail.com"
+                >
+                  NG
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-slate-400 font-medium leading-none mb-1">Logged in as:</p>
+                  <p className={`text-[12px] font-bold truncate ${darkMode ? 'text-slate-200' : 'text-[#5c5446]'}`}>nipun24.goel@gmail.com</p>
+                  <button 
+                   onClick={handleLogout}
+                   className="text-[11px] text-red-500 hover:text-red-750 transition-colors font-extrabold cursor-pointer mt-1 block"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+
+              <button 
+                onClick={toggleDarkMode}
+                className={`w-full flex items-center rounded-lg transition-all text-[14px] cursor-pointer gap-4 px-3 py-2.5 ${darkMode ? 'text-[#a8a090] hover:bg-[#38332c] hover:text-white' : 'text-[#877d6c] hover:bg-[#e7e1d3] hover:text-[#5c5446]'}`}
+                title="Toggle Dark Mode"
+              >
+                {darkMode ? <Icons.Sun /> : <Icons.Moon />}
+                <span className="font-medium">{darkMode ? 'Light Theme' : 'Dark Theme'}</span>
+              </button>
+            </div>
+          )}
          {sidebarCollapsed && (
            <div className="flex flex-col items-center gap-4 animate-fade-in">
              <span 
