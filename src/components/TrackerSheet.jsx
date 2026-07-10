@@ -18,14 +18,54 @@ export default function TrackerSheet({
   copyTrackerData,
   exportToWord
 }) {
-  const [filterDateRange, setFilterDateRange] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [activePreset, setActivePreset] = useState('all');
+
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+
+  const applyPreset = (preset) => {
+    setActivePreset(preset);
+    const today = new Date();
+    const todayStr = getTodayStr();
+
+    if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'week') {
+      const nextWeek = new Date();
+      nextWeek.setDate(today.getDate() + 7);
+      setStartDate(todayStr);
+      setEndDate(nextWeek.toISOString().split('T')[0]);
+    } else if (preset === 'month') {
+      const lastMonth = new Date();
+      lastMonth.setDate(today.getDate() - 30);
+      setStartDate(lastMonth.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    }
+  };
+
+  const handleCustomDateChange = (type, val) => {
+    setActivePreset('custom');
+    if (type === 'start') {
+      setStartDate(val);
+    } else {
+      setEndDate(val);
+    }
+  };
 
   // Filter tasks based on location property and date range
   const filteredTrackerTasks = tasks.filter(t => {
     if (filterProperty !== 'All' && t.property !== filterProperty) return false;
-    if (filterDateRange === 'today') {
-      const todayStr = new Date().toISOString().split('T')[0];
-      return t.dueDate === todayStr;
+    
+    if (startDate) {
+      if (t.dueDate < startDate) return false;
+    }
+    if (endDate) {
+      if (t.dueDate > endDate) return false;
     }
     return true;
   });
@@ -34,17 +74,46 @@ export default function TrackerSheet({
     <div className="flex flex-col h-full space-y-6">
       {/* Glass Filters & Actions Bar */}
       <div className={`backdrop-blur-md p-4 rounded-xl border shadow-xs flex flex-col gap-4 ${darkMode ? 'bg-[#15181e]/60 border-slate-800' : 'bg-white/60 border-slate-200/60'}`}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <span className={`text-[15px] font-medium ${darkMode ? 'text-slate-300' : 'text-slate-650'}`}>Timeframe:</span>
-            <select 
-              className={`border text-[15px] rounded-md focus:ring-0 block px-3 py-1.5 cursor-pointer outline-none ${darkMode ? 'bg-slate-800/80 border-slate-700 text-slate-200' : 'bg-white/60 border-slate-200 text-slate-700'}`}
-              value={filterDateRange}
-              onChange={(e) => setFilterDateRange(e.target.value)}
-            >
-              <option value="all">All Time</option>
-              <option value="today">Due Today</option>
-            </select>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+          <div className="flex flex-col gap-2">
+            <span className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Date Range</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <input 
+                type="date"
+                value={startDate}
+                onChange={(e) => handleCustomDateChange('start', e.target.value)}
+                className={`border text-[13px] rounded-md px-2.5 py-1.5 outline-none transition-colors cursor-pointer ${darkMode ? 'bg-slate-800/80 border-slate-700 text-slate-200 focus:border-slate-600' : 'bg-white border-slate-200 text-slate-750 focus:border-slate-400'}`}
+              />
+              <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>to</span>
+              <input 
+                type="date"
+                value={endDate}
+                onChange={(e) => handleCustomDateChange('end', e.target.value)}
+                className={`border text-[13px] rounded-md px-2.5 py-1.5 outline-none transition-colors cursor-pointer ${darkMode ? 'bg-slate-800/80 border-slate-700 text-slate-200 focus:border-slate-600' : 'bg-white border-slate-200 text-slate-750 focus:border-slate-400'}`}
+              />
+            </div>
+
+            {/* Presets List */}
+            <div className="flex items-center gap-4 mt-1.5">
+              {[
+                { id: 'all', label: 'All time' },
+                { id: 'today', label: 'Today' },
+                { id: 'week', label: 'Next 7 Days' },
+                { id: 'month', label: 'Last 30 Days' }
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => applyPreset(p.id)}
+                  className={`text-xs font-semibold cursor-pointer transition-colors ${
+                    activePreset === p.id 
+                      ? (darkMode ? 'text-white border-b-2 border-slate-100 pb-0.5' : 'text-slate-900 border-b-2 border-slate-900 pb-0.5')
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
           
           <div className="flex gap-3">
