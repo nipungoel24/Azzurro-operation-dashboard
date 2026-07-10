@@ -1,5 +1,40 @@
 @import "tailwindcss";
 
 @theme {
-  --font-serif-display: var(--font-dm-serif-display);
+  /* Font Family Mappings */
+  --font-serif-display: "DM Serif Display", serif;
+  --font-sans: "Plus Jakarta Sans", "Outfit", system-ui, sans-serif;
+
+  /* Custom Design Tokens - Brand Colors */
+  --color-brand-linen: #faf8f5;
+  --color-brand-sand-light: #faf8f4;
+  --color-brand-sand-medium: #f0ece1;
+  --color-brand-sand-dark: #e3ded0;
+  --color-brand-stone: #eee3cc;
+  --color-brand-ochre-light: #877d6c;
+  --color-brand-ochre-dark: #5c5446;
+  --color-brand-ochre-deep: #3d3730;
+
+  /* Dark Theme Charcoal & Volcanic Tones */
+  --color-brand-volcanic-ash: #181614;
+  --color-brand-obsidian: #15181e;
+  --color-brand-charcoal-clay: #1b1917;
+  --color-brand-stone-dark: #292622;
+  --color-brand-sidebar-dark: #38332c;
+
+  /* Unified Layout Spacing Tokens */
+  --spacing-layout-xs: 0.25rem;
+  --spacing-layout-sm: 0.5rem;
+  --spacing-layout-md: 1rem;
+  --spacing-layout-lg: 1.5rem;
+  --spacing-layout-xl: 2rem;
+  --spacing-layout-2xl: 3rem;
+
+  /* Unified Typography Scale Tokens */
+  --font-size-title-hero: 2.25rem;
+  --font-size-title-section: 1.75rem;
+  --font-size-title-card: 1.125rem;
+  --font-size-body-regular: 0.875rem;
+  --font-size-body-small: 0.75rem;
+  --font-size-caption: 0.6875rem;
 }
