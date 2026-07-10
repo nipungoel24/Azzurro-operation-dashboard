@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+@theme {
+  --font-serif-display: var(--font-dm-serif-display);
+}
