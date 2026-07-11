@@ -12,6 +12,9 @@ import TaskModal from '../components/TaskModal';
 import ReminderModal from '../components/ReminderModal';
 import ReminderOverlay from '../components/ReminderOverlay';
 import FloatingControlPill from '../components/FloatingControlPill';
+import { useOccupancyData } from '../utils/useOccupancyData';
+import LiveStatusHUD from '../components/LiveStatusHUD';
+import RoomsDashboard from '../components/RoomsDashboard';
 
 const INITIAL_TASKS = [
   { 
@@ -178,6 +181,24 @@ export default function Home() {
   const [filterProperty, setFilterProperty] = useState('All');
   const [darkMode, setDarkMode] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Live Occupancy Hook
+  const { data: occupancyData, loading: occupancyLoading, error: occupancyError } = useOccupancyData(300000);
+
+  const openMaintenanceTaskModal = (propertyName) => {
+    setTaskModalMode('create');
+    setTaskModalId('');
+    setTaskTitleInput(`Blocked Room Maintenance Check - ${propertyName}`);
+    setTaskDescInput(`Perform operational check on blocked room at ${propertyName}. Investigate discrepancy between beds left and beds vacant.`);
+    setTaskPropertyInput(propertyName);
+    setTaskStatusInput('To do');
+    setTaskResponsibleInput('Sarah J.');
+    setTaskDueDateInput(getTodayStr());
+    setTaskRecurrenceInput('none');
+    setCustomIntervalInput(3);
+    setCustomUnitInput('days');
+    setTaskModalOpen(true);
+  };
 
   // Modal Form Inputs
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -692,10 +713,10 @@ export default function Home() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 flex-shrink-0">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-              {activeView === 'board' ? 'Task Schedule' : 'Location Checklists'}
+              {activeView === 'board' ? 'Task Schedule' : activeView === 'rooms' ? 'Property Overview' : 'Location Checklists'}
             </span>
             <h2 className="text-3xl font-black font-serif-display leading-tight tracking-tight mt-1">
-              {activeView === 'board' ? 'Daily Operations' : 'Trackers & Exports'}
+              {activeView === 'board' ? 'Daily Operations' : activeView === 'rooms' ? 'Rooms HUD' : 'Trackers & Exports'}
             </h2>
           </div>
 
@@ -743,17 +764,35 @@ export default function Home() {
         {/* Dynamic Inner View Content */}
         <div className="flex-1 min-h-0">
           {activeView === 'board' ? (
-            <SprintBoard 
-              tasks={tasks}
-              statuses={STATUSES}
+            <div className="flex flex-col h-full gap-6">
+              <LiveStatusHUD 
+                occupancyData={occupancyData}
+                loading={occupancyLoading}
+                error={occupancyError}
+                darkMode={darkMode}
+                openMaintenanceTaskModal={openMaintenanceTaskModal}
+              />
+              <div className="flex-1 min-h-0">
+                <SprintBoard 
+                  tasks={tasks}
+                  statuses={STATUSES}
+                  darkMode={darkMode}
+                  filterProperty={filterProperty}
+                  openEditTaskModal={openEditTaskModal}
+                  handleDeleteTask={handleDeleteTask}
+                  handleCopyFollowUp={handleCopyFollowUp}
+                  handleOpenReminderModal={handleOpenReminderModal}
+                  setSelectedDetailsTask={setSelectedDetailsTask}
+                  handleStatusChange={handleStatusChange}
+                />
+              </div>
+            </div>
+          ) : activeView === 'rooms' ? (
+            <RoomsDashboard 
+              occupancyData={occupancyData}
+              loading={occupancyLoading}
+              error={occupancyError}
               darkMode={darkMode}
-              filterProperty={filterProperty}
-              openEditTaskModal={openEditTaskModal}
-              handleDeleteTask={handleDeleteTask}
-              handleCopyFollowUp={handleCopyFollowUp}
-              handleOpenReminderModal={handleOpenReminderModal}
-              setSelectedDetailsTask={setSelectedDetailsTask}
-              handleStatusChange={handleStatusChange}
             />
           ) : (
             <TrackerSheet 

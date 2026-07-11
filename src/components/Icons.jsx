@@ -107,4 +107,18 @@ export const Icons = {
       dark_mode
     </span>
   ),
+  Bed: ({ className = "" }) => (
+    <span
+      className={`material-symbols-outlined select-none text-[20px] leading-none ${className}`}
+    >
+      bed
+    </span>
+  ),
+  Wrench: ({ className = "" }) => (
+    <span
+      className={`material-symbols-outlined select-none text-[18px] leading-none ${className}`}
+    >
+      build
+    </span>
+  ),
 };

@@ -53,6 +53,15 @@ export default function Sidebar({
           <Icons.Board />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Sprint Board</span>}
         </button>
+
+        <button 
+          onClick={() => setActiveView('rooms')}
+          className={`w-full flex items-center rounded-lg transition-all text-[14px] cursor-pointer ${sidebarCollapsed ? 'justify-center p-3' : 'gap-4 px-3 py-2.5'} ${activeView === 'rooms' ? (darkMode ? 'bg-[#3d3730] text-white font-semibold' : 'bg-[#e3ded0] text-[#5c5446] font-semibold shadow-xs') : (darkMode ? 'text-[#a8a090] hover:bg-[#38332c] hover:text-white' : 'text-[#877d6c] hover:bg-[#e7e1d3] hover:text-[#5c5446]')}`}
+          title="Rooms Dashboard"
+        >
+          <Icons.Bed />
+          {!sidebarCollapsed && <span className="animate-fade-in font-medium">Rooms HUD</span>}
+        </button>
         
         <button 
           onClick={() => setActiveView('tracker')}
