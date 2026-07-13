@@ -178,6 +178,19 @@ export default function SprintBoard({
                         >
                           {task.reminderActive ? <Icons.BellSolid /> : <Icons.Bell />}
                         </button>
+                        
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm("Are you sure you want to delete this task?")) {
+                              handleDeleteTask(task.id);
+                            }
+                          }}
+                          className="p-1 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-950/20 transition-all cursor-pointer"
+                          title="Delete Task"
+                        >
+                          <Icons.Trash className="text-[16px]" />
+                        </button>
                       </div>
 
                     </div>

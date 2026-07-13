@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function TaskDetailsModal({
   selectedDetailsTask,
@@ -6,11 +6,15 @@ export default function TaskDetailsModal({
   newUpdateText,
   setNewUpdateText,
   handleAddUpdate,
+  handleEditUpdate,
   handleDeleteTask,
   openEditTaskModal,
   darkMode,
   statuses
 }) {
+  const [editingUpdateId, setEditingUpdateId] = useState(null);
+  const [editingUpdateText, setEditingUpdateText] = useState('');
+
   if (!selectedDetailsTask) return null;
 
   return (
@@ -59,18 +63,71 @@ export default function TaskDetailsModal({
               ) : (
                 selectedDetailsTask.updates.map((up) => {
                   const statusConfig = statuses.find(s => s.id === selectedDetailsTask.status) || statuses[0];
+                  const authorDisplay = up.authorName && up.authorEmail 
+                    ? `${up.authorName} (${up.authorEmail})` 
+                    : (up.author || 'nipun24.goel@gmail.com');
+                  const isEditing = editingUpdateId === up.id;
                   return (
                     <div 
                       key={up.id}
-                      className={`p-3.5 rounded-lg border-y border-r border-l-4 leading-normal ${darkMode ? 'bg-[#292622]/40 border-slate-850' : 'bg-[#faf8f4]/50 border-slate-200/50'}`}
+                      className={`p-3.5 rounded-lg border-y border-r border-l-4 leading-normal relative group ${darkMode ? 'bg-[#292622]/40 border-slate-850' : 'bg-[#faf8f4]/50 border-slate-200/50'}`}
                       style={{ borderLeftColor: statusConfig.brandColor }}
                     >
-                      <p className="text-[10px] font-bold text-slate-400 mb-1">
-                        {up.timestamp} · {up.author}
-                      </p>
-                      <p className={`text-xs whitespace-pre-line leading-relaxed ${darkMode ? 'text-slate-200' : 'text-[#443e35]'}`}>
-                        {up.text}
-                      </p>
+                      {isEditing ? (
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            value={editingUpdateText}
+                            onChange={(e) => setEditingUpdateText(e.target.value)}
+                            rows="2"
+                            className={`w-full border rounded-lg p-2 text-xs outline-none transition-colors resize-none ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-200 focus:border-slate-650' : 'bg-white border-slate-200 text-[#5c5446] focus:border-slate-400'}`}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => {
+                                setEditingUpdateId(null);
+                                setEditingUpdateText('');
+                              }}
+                              className={`px-2 py-1 text-[10px] font-bold rounded cursor-pointer transition-colors ${darkMode ? 'text-slate-400 hover:text-slate-250' : 'text-slate-550 hover:text-slate-800'}`}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleEditUpdate(up.id, editingUpdateText);
+                                setEditingUpdateId(null);
+                                setEditingUpdateText('');
+                              }}
+                              className={`px-2 py-1 text-[10px] font-bold text-white bg-slate-900 hover:bg-slate-800 rounded cursor-pointer transition-colors`}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-start gap-2">
+                            <p className="text-[10px] font-bold text-slate-400 mb-1">
+                              {up.timestamp} · {authorDisplay}
+                            </p>
+                            
+                            {/* Inline Edit Trigger Icon */}
+                            <button
+                              onClick={() => {
+                                setEditingUpdateId(up.id);
+                                setEditingUpdateText(up.text);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 dark:hover:bg-slate-800 cursor-pointer flex items-center justify-center absolute right-2 top-2"
+                              title="Edit Update"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">edit</span>
+                            </button>
+                          </div>
+                          
+                          <p className={`text-xs whitespace-pre-line leading-relaxed ${darkMode ? 'text-slate-200' : 'text-[#443e35]'}`}>
+                            {up.text}
+                          </p>
+                        </>
+                      )}
                     </div>
                   );
                 })

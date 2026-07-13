@@ -249,12 +249,16 @@ export default function TrackerSheet({
 
                            {/* Delete Button */}
                            <button 
-                            onClick={() => handleDeleteTask(task.id)}
-                            className={`flex items-center p-2 rounded transition-colors cursor-pointer ${darkMode ? 'text-slate-400 hover:bg-red-950/40 hover:text-red-400' : 'text-slate-400 hover:bg-red-50 hover:text-red-700'}`}
-                            title="Delete Task"
-                           >
-                            <Icons.Trash /> 
-                           </button>
+                             onClick={() => {
+                               if (window.confirm("Are you sure you want to delete this task?")) {
+                                 handleDeleteTask(task.id);
+                               }
+                             }}
+                             className={`flex items-center p-2 rounded transition-colors cursor-pointer ${darkMode ? 'text-red-400/80 hover:bg-red-950/20 hover:text-red-400' : 'text-red-500/70 hover:bg-red-50 hover:text-red-700'}`}
+                             title="Delete Task"
+                            >
+                             <Icons.Trash className="text-[16px]" /> 
+                            </button>
 
                         </div>
                       </td>
