@@ -323,6 +323,50 @@ export default function Home() {
   // Chatbot state
   const [chatbotOpen, setChatbotOpen] = useState(false);
 
+  // Pill dock generation state
+  const [generatingFromPill, setGeneratingFromPill] = useState(null);
+
+  const handleGenerateFromPill = async (mode) => {
+    setGeneratingFromPill(mode);
+    try {
+      const res = await fetch('/api/scheduled-tasks/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Generated ${data.totalTasks} task(s)`);
+      } else {
+        showToast(data.error || 'Failed');
+      }
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      setGeneratingFromPill(null);
+    }
+  };
+
+  const handleSyncEmptyRooms = async () => {
+    setGeneratingFromPill('sync');
+    try {
+      const res = await fetch('/api/empty-rooms/sync', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Synced: ${data.roomsUpdated || 0} rooms`);
+      } else {
+        showToast(data.error || 'Sync failed');
+      }
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      setGeneratingFromPill(null);
+    }
+  };
+
+  const handleAddFacility = () => setActiveView('facilities');
+  const handleAddHandoff = () => setActiveView('handoffs');
+
   // Hydrate theme and permissions
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -1212,6 +1256,13 @@ export default function Home() {
         toggleDarkMode={toggleDarkMode}
         openCreateTaskModal={openCreateTaskModal}
         copyTrackerData={copyTrackerData}
+        onGenerateBathrooms={handleGenerateFromPill}
+        onGenerateVents={handleGenerateFromPill}
+        onGenerateDaily={handleGenerateFromPill}
+        onSyncEmptyRooms={handleSyncEmptyRooms}
+        onAddFacility={handleAddFacility}
+        onAddHandoff={handleAddHandoff}
+        generatingState={generatingFromPill}
       />
 
       {/* Chatbot Toggle Button */}
