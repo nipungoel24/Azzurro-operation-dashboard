@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
 const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
