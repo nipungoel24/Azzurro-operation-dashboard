@@ -11,7 +11,7 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 
 const ALLOWED_ACTIONS = [
-  'query_schedule', 'query_incomplete_tasks', 'query_overdue_tasks', 'query_empty_rooms',
+  'respond', 'query_schedule', 'query_incomplete_tasks', 'query_overdue_tasks', 'query_empty_rooms',
   'query_facilities', 'query_handoffs', 'query_bathrooms', 'query_rooms',
   'create_task', 'update_task', 'complete_task', 'mark_incomplete',
   'reassign_task', 'reschedule_task', 'create_handoff', 'acknowledge_handoff',
@@ -27,9 +27,13 @@ const DANGEROUS_ACTIONS = [
 
 const SYSTEM_PROMPT = `You are an operations assistant for Azzurro Hotels, a multi-property hostel/budget hotel group in Sydney, Australia.
 
-Your job is to help staff manage cleaning, maintenance, and facility operations through a structured action system.
+Your primary job is to help staff manage cleaning, maintenance, and facility operations. You can also answer general questions, provide information, summarize data, and have natural conversations.
+
+WHEN TO USE ACTIONS:
+Use the actions below ONLY when the user's intent clearly maps to one. Otherwise, respond conversationally using "action": "respond".
 
 AVAILABLE ACTIONS:
+- respond: Use when no specific action is needed. Respond with helpful information, context data, guidance, or general conversation. Params: {message: "your full markdown-formatted response", data: {optional structured data for display}}
 - query_schedule: Get scheduled tasks. Params: {propertyName, status, assigneeName, date, category, limit}
 - query_incomplete_tasks: Get tasks marked incomplete. Params: {propertyName, date, assigneeName}
 - query_overdue_tasks: Get overdue tasks. Params: {propertyName}
@@ -58,18 +62,21 @@ AVAILABLE ACTIONS:
 - revert_change: Revert a change. Params: {auditLogId} (REQUIRES CONFIRMATION)
 
 RULES:
-1. Always respond with a valid JSON object: {"action": "...", "params": {...}, "message": "human-readable summary", "requiresConfirmation": false}
+1. Always respond with a valid JSON object: {"action": "...", "params": {...}, "message": "human-readable summary", "requiresConfirmation": false, "data": {...}}
 2. For dangerous actions (creating bulk tasks, reverting), set "requiresConfirmation": true
-3. Parse "today", "tomorrow", "tonight" relative to Australia/Sydney timezone
-4. "tonight" = night shift today, "next Monday" = the upcoming Monday
-5. Property names: Potts Point, Surry Hills, Darling Harbour, Central Sydney, The Pyrmont Budget Hotel, Olympic Hotel
-6. Task categories: bathroom_deep_clean, vent_cleaning, general_cleaning, night_shift, cockroach_spraying, ac_check, hardware_check, supplies, laundry_pod, go_key_charge, bed_frame_check, curtain_rod_check, other
-7. Shifts: morning, afternoon, night, overnight
-8. If you cannot determine intent, ask for clarification via the message field
-9. Never invent room numbers, staff names, or facility counts
-10. Default task priority is "medium"
+3. For conversational/general queries, use "action": "respond" with a helpful message. Reference available context data where relevant.
+4. Parse "today", "tomorrow", "tonight" relative to Australia/Sydney timezone
+5. "tonight" = night shift today, "next Monday" = the upcoming Monday
+6. Property names: Potts Point, Surry Hills, Darling Harbour, Central Sydney, The Pyrmont Budget Hotel, Olympic Hotel
+7. Task categories: bathroom_deep_clean, vent_cleaning, general_cleaning, night_shift, cockroach_spraying, ac_check, hardware_check, supplies, laundry_pod, go_key_charge, bed_frame_check, curtain_rod_check, other
+8. Shifts: morning, afternoon, night, overnight
+9. If you cannot determine intent, ask for clarification via the message field
+10. Never invent room numbers, staff names, or facility counts
+11. Default task priority is "medium"
+12. When using "respond", include a thorough, well-formatted response in the message field. Use the context data to provide accurate information.
+13. You have access to a limited set of context. If asked about data you don't have, explain what you can help with instead.`;
 
-Respond ONLY with the JSON object. No other text.`;
+const SUBSEQUENT_SYSTEM_PROMPT = `You are continuing a conversation as an operations assistant for Azzurro Hotels. You have already executed actions and provided information to the user. Continue naturally based on their next message. Use the same JSON response format and action set.`;
 
 function validateActionSchema(action, params) {
   const schemas = {
@@ -235,7 +242,11 @@ export async function processChatMessage(message, userEmail, userName) {
     aiResponse = await callDeepSeek(message, context);
   } catch (err) {
     console.error('[Chatbot] DeepSeek API error:', err.message);
-    return { action: 'error', message: 'Failed to get response from AI. Please try again.' };
+    let msg = err.message || 'Failed to get response from AI. Please try again.';
+    if (msg.includes('image') || msg.includes('not support image')) {
+      msg = 'This model only supports text. Please describe your request without referencing image files.';
+    }
+    return { action: 'error', message: msg };
   }
 
   let parsed;
@@ -247,6 +258,15 @@ export async function processChatMessage(message, userEmail, userName) {
 
   if (!parsed.action || !ALLOWED_ACTIONS.includes(parsed.action)) {
     return { action: 'error', message: 'AI suggested an unsupported action.', raw: parsed };
+  }
+
+  if (parsed.action === 'respond') {
+    return {
+      action: 'respond',
+      message: parsed.params?.message || parsed.message || 'I can help you with hotel operations. What would you like to know?',
+      data: parsed.params?.data || parsed.data || null,
+      result: parsed.params?.data || parsed.data || null,
+    };
   }
 
   const validation = validateActionSchema(parsed.action, parsed.params || {});
@@ -270,8 +290,10 @@ async function callDeepSeek(message, context) {
     .replace(/```[\s\S]*?```/g, '[block removed]')
     .replace(/!\[.*?\]\(.*?\)/g, '[removed]')
     .replace(/\bhttps?:\/\/\S+/g, '[link removed]')
-    .replace(/\.\w{2,4}\b/g, '')
-    .replace(/\b\w+\/\w+\.\w+\b/g, '');
+    .replace(/["']?\S+\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw)["']?/gi, '[file removed]')
+    .replace(/\b\S+\/(\S+\.(png|jpe?g|gif|svg|webp|bmp))\b/gi, '[file removed]');
+
+  const contextBlock = context ? JSON.stringify(context, null, 2) : '';
 
   const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -283,16 +305,23 @@ async function callDeepSeek(message, context) {
       model: 'deepseek-chat',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: `Current operational context (use this data for accurate responses):\n${contextBlock}` },
         { role: 'user', content: sanitized },
       ],
       temperature: 0.3,
-      max_tokens: 2000,
+      max_tokens: 3000,
     }),
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`DeepSeek API error: ${response.status}`);
+    let errorText = '';
+    try {
+      const errData = await response.json();
+      errorText = errData.error?.message || errData.message || JSON.stringify(errData);
+    } catch {
+      errorText = await response.text();
+    }
+    throw new Error(`API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
@@ -312,27 +341,62 @@ async function buildContext(user) {
   };
 
   try {
-    const tasks = await getScheduledTasks({ limit: 5 });
+    const tasks = await getScheduledTasks({ limit: 10 });
     ctx.recentTasks = tasks.map(t => ({
       id: t.id, title: t.title, status: t.status,
       propertyName: t.propertyName, assigneeName: t.assigneeName,
-      scheduledStart: t.scheduledStart, category: t.category,
+      scheduledStart: t.scheduledStart, category: t.category, shift: t.shift,
     }));
   } catch { ctx.recentTasks = []; }
+
+  try {
+    const statusGroups = await prisma.scheduledTask.groupBy({
+      by: ['status'],
+      _count: { id: true },
+    });
+    const statusCounts = {};
+    for (const g of statusGroups) {
+      statusCounts[g.status] = g._count.id;
+    }
+    ctx.taskStatusCounts = statusCounts;
+    ctx.totalTasks = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+  } catch { ctx.taskStatusCounts = {}; ctx.totalTasks = 0; }
 
   try {
     const facilities = await getFacilities();
     ctx.facilityCount = facilities.length;
     ctx.facilityTypes = [...new Set(facilities.map(f => f.type))];
-  } catch { ctx.facilityCount = 0; }
+    const typeCounts = {};
+    for (const f of facilities) {
+      typeCounts[f.type] = (typeCounts[f.type] || 0) + 1;
+    }
+    ctx.facilityTypeCounts = typeCounts;
+  } catch { ctx.facilityCount = 0; ctx.facilityTypeCounts = {}; }
 
   try {
     const overdues = await prisma.scheduledTask.findMany({
       where: { status: 'overdue' },
-      select: { id: true, title: true, propertyName: true },
+      select: { id: true, title: true, propertyName: true, assigneeName: true, category: true },
     });
     ctx.overdueCount = overdues.length;
-  } catch { ctx.overdueCount = 0; }
+    ctx.overdueTasks = overdues.slice(0, 5);
+  } catch { ctx.overdueCount = 0; ctx.overdueTasks = []; }
+
+  try {
+    const incompletes = await prisma.scheduledTask.findMany({
+      where: { status: 'incomplete' },
+      select: { id: true, title: true, propertyName: true, assigneeName: true },
+    });
+    ctx.incompleteCount = incompletes.length;
+  } catch { ctx.incompleteCount = 0; }
+
+  try {
+    const completed = await prisma.scheduledTask.findMany({
+      where: { status: 'completed' },
+      select: { id: true },
+    });
+    ctx.completedCount = completed.length;
+  } catch { ctx.completedCount = 0; }
 
   try {
     const handoffs = await prisma.shiftHandoff.findMany({
@@ -342,6 +406,24 @@ async function buildContext(user) {
     });
     ctx.unacknowledgedHandoffs = handoffs.length;
   } catch { ctx.unacknowledgedHandoffs = 0; }
+
+  try {
+    const roomCount = await prisma.room.count();
+    ctx.totalRooms = roomCount;
+  } catch { ctx.totalRooms = 0; }
+
+  try {
+    const bathroomCount = await prisma.facility.count({ where: { type: 'bathroom' } });
+    ctx.totalBathrooms = bathroomCount;
+  } catch { ctx.totalBathrooms = 0; }
+
+  try {
+    const properties = await prisma.facility.groupBy({
+      by: ['propertyCode'],
+      _count: { id: true },
+    });
+    ctx.propertyFacilityCounts = properties.map(p => ({ propertyCode: p.propertyCode, count: p._count.id }));
+  } catch { ctx.propertyFacilityCounts = []; }
 
   return ctx;
 }
@@ -405,7 +487,7 @@ export async function executeAction(action, params, user, summaryMessage) {
         result = await getHandoffs({
           propertyName: params.propertyName || null,
           shiftTo: params.shiftTo || null,
-          acknowledged: params.acknowledged === false ? false : null,
+          acknowledged: params.acknowledged != null ? params.acknowledged : null,
         });
         message = message || `Found ${result.length} handoffs.`;
         break;

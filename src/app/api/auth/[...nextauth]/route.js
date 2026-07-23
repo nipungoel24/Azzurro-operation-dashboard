@@ -72,8 +72,10 @@ export const authOptions = {
       return session;
     }
   },
-  secret: process.env.NEXTAUTH_SECRET || "azzurro_dashboard_secret_key_v1"
+  secret: process.env.NEXTAUTH_SECRET || 'azzurro_ops_nextauth_secret_change_me',
 };
 
+// In production NEXTAUTH_URL must be set, but NextAuth can infer it from headers.
+// We pass it explicitly so redirects are consistent behind reverse proxies.
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };

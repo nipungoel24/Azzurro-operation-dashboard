@@ -103,11 +103,13 @@ export default function ChatbotPanel({ darkMode, onClose }) {
               <span className="material-symbols-outlined select-none text-2xl text-indigo-400">psychology</span>
             </div>
             <p className={`text-sm font-semibold mb-1 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>How can I help?</p>
-            <p className={`text-[11px] mb-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Ask about rooms, tasks, scheduling, or facilities</p>
+            <p className={`text-[11px] mb-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Ask anything about rooms, tasks, scheduling, facilities, or operations</p>
             <div className="space-y-2 w-full">
-              <button onClick={() => setInput('Show empty rooms at Potts Point')} className={chip}>Show empty rooms at Potts Point</button>
-              <button onClick={() => setInput('Schedule bathroom deep clean tomorrow')} className={chip}>Schedule bathroom deep clean tomorrow</button>
+              <button onClick={() => setInput('Show me empty rooms at Potts Point')} className={chip}>Show empty rooms at Potts Point</button>
               <button onClick={() => setInput('What tasks are overdue?')} className={chip}>What tasks are overdue?</button>
+              <button onClick={() => setInput('Give me a summary of all operations today')} className={chip}>Summary of all operations</button>
+              <button onClick={() => setInput('How many bathrooms and rooms do we have?')} className={chip}>How many bathrooms &amp; rooms?</button>
+              <button onClick={() => setInput('Schedule bathroom deep clean tomorrow')} className={chip}>Schedule bathroom deep clean</button>
               <button onClick={() => setInput('Create vent cleaning for Monday')} className={chip}>Create vent cleaning for Monday</button>
             </div>
           </div>
@@ -198,29 +200,30 @@ export default function ChatbotPanel({ darkMode, onClose }) {
 
 function BotMessage({ msg, darkMode }) {
   const r = msg.result;
+  const d = msg.data || r;
   const line = darkMode ? 'border-white/[0.06]' : 'border-slate-100';
   const row = darkMode ? 'bg-white/[0.03]' : 'bg-white/80';
 
   return (
     <div>
-      {msg.text && <p className="whitespace-pre-line leading-relaxed text-[13px]">{msg.text}</p>}
+      {msg.text && <MarkdownRenderer text={msg.text} darkMode={darkMode} />}
 
-      {r?.tasks && r.tasks.length > 0 && (
+      {d?.tasks && d.tasks.length > 0 && (
         <div className={`mt-2.5 space-y-0.5 ${msg.text ? `border-t pt-2.5 ${line}` : ''}`}>
-          {r.tasks.slice(0, 10).map((t, i) => (
+          {d.tasks.slice(0, 10).map((t, i) => (
             <div key={i} className={`flex items-center gap-2.5 text-[11px] px-2.5 py-1.5 rounded-lg ${row}`}>
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.status === 'completed' ? 'bg-emerald-400' : t.status === 'overdue' ? 'bg-red-400' : t.status === 'incomplete' ? 'bg-rose-400' : t.status === 'in_progress' ? 'bg-amber-400' : 'bg-slate-400'}`} />
               <span className="flex-1 truncate font-medium">{t.title}</span>
               {t.assigneeName && <span className="text-[10px] opacity-40 shrink-0">{t.assigneeName}</span>}
             </div>
           ))}
-          {r.tasks.length > 10 && <p className="text-[10px] opacity-40 px-2.5 pt-1">+{r.tasks.length - 10} more</p>}
+          {d.tasks.length > 10 && <p className="text-[10px] opacity-40 px-2.5 pt-1">+{d.tasks.length - 10} more</p>}
         </div>
       )}
 
-      {r?.bathrooms && r.bathrooms.length > 0 && (
+      {d?.bathrooms && d.bathrooms.length > 0 && (
         <div className={`mt-2.5 space-y-0.5 ${msg.text ? `border-t pt-2.5 ${line}` : ''}`}>
-          {r.bathrooms.slice(0, 8).map((b, i) => (
+          {d.bathrooms.slice(0, 8).map((b, i) => (
             <div key={i} className={`flex items-center gap-2.5 text-[11px] px-2.5 py-1.5 rounded-lg ${row}`}>
               <span className="material-symbols-outlined select-none text-xs opacity-40 shrink-0">shower</span>
               <span className="flex-1">{b.name}</span>
@@ -230,9 +233,9 @@ function BotMessage({ msg, darkMode }) {
         </div>
       )}
 
-      {r?.rooms && r.rooms.length > 0 && (
+      {d?.rooms && d.rooms.length > 0 && (
         <div className={`mt-2.5 space-y-0.5 ${msg.text ? `border-t pt-2.5 ${line}` : ''}`}>
-          {r.rooms.slice(0, 8).map((rm, i) => (
+          {d.rooms.slice(0, 8).map((rm, i) => (
             <div key={i} className={`flex items-center gap-2.5 text-[11px] px-2.5 py-1.5 rounded-lg ${row}`}>
               <span className="material-symbols-outlined select-none text-xs opacity-40 shrink-0">door_front</span>
               <span className="flex-1">Room {rm.roomNumber}</span>
@@ -242,12 +245,177 @@ function BotMessage({ msg, darkMode }) {
         </div>
       )}
 
-      {r?.task && !r?.tasks && (
+      {d?.task && !d?.tasks && (
         <div className={`mt-2.5 border-t pt-2.5 flex items-center gap-2.5 text-[11px] ${line}`}>
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${r.task.status === 'completed' ? 'bg-emerald-400' : 'bg-blue-400'}`} />
-          <span className="font-medium">{r.task.title}</span>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${d.task.status === 'completed' ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+          <span className="font-medium">{d.task.title}</span>
+        </div>
+      )}
+
+      {d?.handoffs && d.handoffs.length > 0 && (
+        <div className={`mt-2.5 space-y-0.5 ${msg.text ? `border-t pt-2.5 ${line}` : ''}`}>
+          {d.handoffs.slice(0, 5).map((h, i) => (
+            <div key={i} className={`flex items-center gap-2.5 text-[11px] px-2.5 py-1.5 rounded-lg ${row}`}>
+              <span className="material-symbols-outlined select-none text-xs opacity-40 shrink-0">swap_horiz</span>
+              <span className="flex-1">{h.shiftFrom || '?'} → {h.shiftTo || '?'}</span>
+              <span className="text-[10px] opacity-40 shrink-0">{h.propertyName || ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {d?.facilities && d.facilities.length > 0 && (
+        <div className={`mt-2.5 space-y-0.5 ${msg.text ? `border-t pt-2.5 ${line}` : ''}`}>
+          {d.facilities.slice(0, 8).map((f, i) => (
+            <div key={i} className={`flex items-center gap-2.5 text-[11px] px-2.5 py-1.5 rounded-lg ${row}`}>
+              <span className="material-symbols-outlined select-none text-xs opacity-40 shrink-0">construction</span>
+              <span className="flex-1 truncate">{f.name}</span>
+              <span className="text-[10px] opacity-40 shrink-0">{f.type || ''}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+function MarkdownRenderer({ text, darkMode }) {
+  if (!text) return null;
+
+  const lines = text.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      i++;
+      continue;
+    }
+
+    if (trimmed.startsWith('### ')) {
+      elements.push(
+        <h4 key={i} className="text-[13px] font-bold mt-2 mb-1 text-slate-800 dark:text-slate-200">{renderInline(trimmed.slice(4), darkMode)}</h4>
+      );
+      i++;
+    } else if (trimmed.startsWith('## ')) {
+      elements.push(
+        <h3 key={i} className="text-sm font-bold mt-2.5 mb-1 text-slate-800 dark:text-slate-100">{renderInline(trimmed.slice(3), darkMode)}</h3>
+      );
+      i++;
+    } else if (trimmed.startsWith('# ')) {
+      elements.push(
+        <h2 key={i} className="text-[15px] font-extrabold mt-3 mb-1.5 text-slate-900 dark:text-slate-100">{renderInline(trimmed.slice(2), darkMode)}</h2>
+      );
+      i++;
+    } else if (/^\|.*\|$/.test(trimmed) && !trimmed.startsWith('|-') && !trimmed.startsWith('|:-')) {
+      const tableRows = [];
+      while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) {
+        tableRows.push(lines[i].trim());
+        i++;
+      }
+      const dataRows = tableRows.filter(r => !/^\|[\s\-:]+\|$/.test(r));
+      if (dataRows.length > 0) {
+        const isHeader = !/^\|-/.test(tableRows[1] || '') && !/^\|:/.test(tableRows[1] || '') && dataRows.length >= 2;
+        elements.push(
+          <div key={i} className="mt-2 mb-2 overflow-x-auto">
+            <table className="w-full text-[11px] border-collapse">
+              <tbody>
+                {dataRows.map((tr, ri) => {
+                  const cells = tr.split('|').filter(c => c !== '').map(c => c.trim());
+                  return (
+                    <tr key={ri} className={ri === 0 && isHeader ? (darkMode ? 'bg-white/[0.03]' : 'bg-slate-50') : ''}>
+                      {cells.map((td, ci) => (
+                        ri === 0 && isHeader
+                          ? <td key={ci} className={`px-2 py-1.5 font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{renderInline(td, darkMode)}</td>
+                          : <td key={ci} className={`px-2 py-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{renderInline(td, darkMode)}</td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+    } else if (trimmed.startsWith('```')) {
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      elements.push(
+        <pre key={i} className={`mt-1.5 mb-1.5 p-2.5 rounded-xl text-[10px] leading-relaxed overflow-x-auto ${darkMode ? 'bg-slate-800/80 text-slate-200 border border-white/[0.06]' : 'bg-slate-100 text-slate-700 border border-slate-200'}`}>
+          <code>{codeLines.join('\n')}</code>
+        </pre>
+      );
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      const listItems = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i].trim())) {
+        listItems.push(lines[i].trim().replace(/^\d+\.\s/, ''));
+        i++;
+      }
+      elements.push(
+        <ol key={i} className="mt-1 mb-1 pl-4 list-decimal text-[12px] space-y-0.5" style={{ listStylePosition: 'outside' }}>
+          {listItems.map((item, ix) => (
+            <li key={ix} className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{renderInline(item, darkMode)}</li>
+          ))}
+        </ol>
+      );
+    } else if (/^[-*+]\s/.test(trimmed)) {
+      const listItems = [];
+      while (i < lines.length && /^[-*+]\s/.test(lines[i].trim())) {
+        listItems.push(lines[i].trim().replace(/^[-*+]\s/, ''));
+        i++;
+      }
+      elements.push(
+        <ul key={i} className="mt-1 mb-1 pl-4 list-disc text-[12px] space-y-0.5" style={{ listStylePosition: 'outside' }}>
+          {listItems.map((item, ix) => (
+            <li key={ix} className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{renderInline(item, darkMode)}</li>
+          ))}
+        </ul>
+      );
+    } else if (trimmed.startsWith('> ')) {
+      const quoteLines = [];
+      while (i < lines.length && lines[i].trim().startsWith('> ')) {
+        quoteLines.push(lines[i].trim().slice(2));
+        i++;
+      }
+      elements.push(
+        <blockquote key={i} className={`mt-1 mb-1 pl-3 border-l-2 text-[12px] ${darkMode ? 'border-slate-600 text-slate-400' : 'border-slate-300 text-slate-500'}`}>
+          {quoteLines.map((ql, ix) => (
+            <p key={ix}>{renderInline(ql, darkMode)}</p>
+          ))}
+        </blockquote>
+      );
+    } else if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+      elements.push(<hr key={i} className={`my-2 ${darkMode ? 'border-white/[0.06]' : 'border-slate-100'}`} />);
+      i++;
+    } else {
+      elements.push(
+        <p key={i} className="text-[13px] leading-relaxed">{renderInline(trimmed, darkMode)}</p>
+      );
+      i++;
+    }
+  }
+
+  return <div className="whitespace-pre-line">{elements}</div>;
+}
+
+function renderInline(text, darkMode) {
+  if (!text) return null;
+
+  const codeClass = darkMode ? 'bg-slate-800/80 text-slate-200 px-1 py-0.5 rounded text-[11px] font-mono' : 'bg-slate-100 text-slate-700 px-1 py-0.5 rounded text-[11px] font-mono';
+
+  const html = text
+    .replace(/`([^`]+)`/g, `<code class="${codeClass}">$1</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\bhttps?:\/\/\S+/g, '<a href="$&" target="_blank" rel="noopener noreferrer" class="underline text-indigo-400">$&</a>');
+
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }

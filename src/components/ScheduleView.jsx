@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import TaskAssignModal from './TaskAssignModal';
 
 const CATEGORIES = [
@@ -34,7 +34,7 @@ const PROP_CODES = { 'Potts Point': 'POTTS_POINT', 'Surry Hills': 'SURRY_HILLS',
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function ScheduleView({ darkMode }) {
+export default function ScheduleView({ darkMode, scheduleExportRef }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterProperty, setFilterProperty] = useState('');
@@ -42,15 +42,24 @@ export default function ScheduleView({ darkMode }) {
   const [filterCategory, setFilterCategory] = useState('');
   const [generating, setGenerating] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
+  const toastTimer = React.useRef(null);
   const [viewMode, setViewMode] = useState('list');
   const [assignModal, setAssignModal] = useState(false);
+  const [editTask, setEditTask] = useState(null);
+  const [updateModal, setUpdateModal] = useState(null);
+  const [updateText, setUpdateText] = useState('');
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   // Calendar state
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [selectedDay, setSelectedDay] = useState(null);
 
-  const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMsg(null), 3000);
+  };
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -69,6 +78,8 @@ export default function ScheduleView({ darkMode }) {
 
   useEffect(() => { (async () => { setLoading(true); await fetchTasks(); setLoading(false); })(); }, [fetchTasks]);
 
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+
   const handleAssign = async (formData) => {
     try {
       const res = await fetch('/api/scheduled-tasks', {
@@ -78,13 +89,58 @@ export default function ScheduleView({ darkMode }) {
       });
       if (res.ok) {
         showToast('Task assigned successfully');
-        fetchTasks();
+        await fetchTasks();
+        setAssignModal(false);
       } else {
-        const d = await res.json();
-        showToast(d.error || 'Failed');
+        const d = await res.json().catch(() => ({}));
+        const msg = d.error || `Server error (${res.status})`;
+        showToast(msg);
+        throw new Error(msg);
+      }
+    } catch (err) {
+      if (!err.message?.startsWith('Server error')) {
+        console.error('Assign task failed:', err);
+        showToast('Network error - check console');
+      }
+      throw err;
+    }
+  };
+
+  const handleEdit = async (formData) => {
+    const res = await fetch(`/api/scheduled-tasks/${formData.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    });
+    if (res.ok) {
+      showToast('Task updated successfully');
+      await fetchTasks();
+      setEditTask(null);
+    } else {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.error || 'Update failed');
+      throw new Error(d.error || 'Update failed');
+    }
+  };
+
+  const handleAddUpdate = async (taskId) => {
+    if (!updateText.trim()) return;
+    try {
+      const res = await fetch(`/api/scheduled-tasks/${taskId}/updates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: updateText.trim() }),
+      });
+      if (res.ok) {
+        showToast('Update added');
+        setUpdateText('');
+        setUpdateModal(null);
+        await fetchTasks();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to add update');
       }
     } catch { showToast('Network error'); }
-    setAssignModal(false);
   };
 
   const handleGenerate = async (mode) => {
@@ -139,6 +195,160 @@ export default function ScheduleView({ darkMode }) {
     fetchTasks();
   };
 
+  const copyToClipboard = (text, successMsg) => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => showToast(successMsg || "Copied to clipboard!"))
+      .catch((err) => {
+        console.error("Clipboard failure", err);
+        showToast("Failed to copy to clipboard.");
+      });
+  };
+
+  const copyScheduleData = () => {
+    let text = `*AZZURRO HOTEL — SCHEDULED ACTIVITIES REPORT*\n_${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "short", year: "numeric" })}_\n\n`;
+
+    categoryGroups.forEach(group => {
+      const activeTasks = group.tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
+      const completedTasks = group.tasks.filter(t => t.status === 'completed');
+
+      text += `*${group.label}* (${activeTasks.length} active, ${completedTasks.length} done)\n`;
+
+      group.tasks.forEach((t) => {
+        const statusEmoji = { completed: '✅', overdue: '⛔', incomplete: '❌', cancelled: '🚫', in_progress: '🔄', scheduled: '📋' };
+        const emoji = statusEmoji[t.status] || '📋';
+        const isCompleted = t.status === 'completed' || t.status === 'cancelled';
+
+        const line = isCompleted
+          ? `  ~${emoji} ${t.title}~`
+          : `  ${emoji} *${t.title}*`;
+
+        text += line + '\n';
+
+        const details = [];
+        details.push(`📍 ${t.propertyName || '-'}`);
+        details.push(`📅 ${t.scheduledStart || 'N/A'}`);
+        details.push(`🕐 ${t.shift || '-'}`);
+        details.push(`👤 ${t.assigneeName || 'unassigned'}`);
+        if (t.priority && t.priority !== 'medium') details.push(`⚡${t.priority}`);
+        text += `  _${details.join(' │ ')}_\n`;
+
+        if (t.description) text += `  _${t.description}_\n`;
+        if (t.incompleteReason) text += `  ⚠️ _${t.incompleteReason}_\n`;
+        if (t.completionNotes) text += `  📝 _${t.completionNotes}_\n`;
+        text += '\n';
+      });
+    });
+
+    copyToClipboard(text, "Schedule report copied to clipboard!");
+  };
+
+  const exportToWord = () => {
+    const properties = PROPERTIES.filter((p) => p !== "");
+    const tasksByProperty = {};
+    properties.forEach((p) => {
+      tasksByProperty[p] = tasks.filter((t) => t.propertyName === p);
+    });
+
+    const htmlHeader = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+      <title>Schedule Report</title>
+      <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #333333; margin: 1in; }
+        h1 { color: #0a1b33; border-bottom: 2px solid #e3ded0; padding-bottom: 8px; font-size: 20pt; }
+        h2 { color: #5c5446; font-size: 14pt; margin-top: 20pt; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid #e3ded0; padding: 10px; text-align: left; }
+        th { background-color: #f0ece1; color: #5c5446; font-weight: bold; }
+        .status { font-weight: bold; text-transform: uppercase; font-size: 9pt; }
+      </style>
+    </head>
+    <body>
+      <h1>AZZURRO HOTEL - SCHEDULED ACTIVITIES</h1>
+      <p>Report Date: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>`;
+
+    let content = "";
+    properties.forEach((prop) => {
+      content += `<h2>📍 Property: ${prop}</h2>`;
+      content += `<table>
+        <tr>
+          <th>Task</th>
+          <th>Date</th>
+          <th>Shift</th>
+          <th>Assignee</th>
+          <th>Category</th>
+          <th>Status</th>
+          <th>Priority</th>
+        </tr>`;
+
+      const propTasks = tasksByProperty[prop] || [];
+      propTasks.forEach((t) => {
+        content += `<tr>
+          <td><b>${t.title || ''}</b>${t.description ? `<br/><small style="color:#777">${t.description}</small>` : ''}</td>
+          <td>${t.scheduledStart || 'N/A'}</td>
+          <td>${t.shift || '-'}</td>
+          <td>${t.assigneeName || 'unassigned'}</td>
+          <td>${(t.category || 'general').replace(/_/g, ' ')}</td>
+          <td class="status">${(t.status || 'scheduled').replace(/_/g, ' ')}</td>
+          <td>${t.priority || 'normal'}</td>
+        </tr>`;
+      });
+
+      if (!propTasks || propTasks.length === 0) {
+        content += `<tr><td colspan="7" style="text-align:center; color:#888">No scheduled activities for this location.</td></tr>`;
+      }
+      content += `</table>`;
+    });
+
+    const htmlFooter = "</body></html>";
+    const sourceHTML = htmlHeader + content + htmlFooter;
+    const source =
+      "data:application/vnd.ms-word;charset=utf-8," +
+      encodeURIComponent(sourceHTML);
+    const fileDownload = document.createElement("a");
+    document.body.appendChild(fileDownload);
+    fileDownload.href = source;
+    fileDownload.download = `Schedule_Activities_${new Date().toISOString().slice(0, 10)}.doc`;
+    fileDownload.click();
+    document.body.removeChild(fileDownload);
+    showToast("Word document generated.");
+  };
+
+  const exportToCsv = () => {
+    const headers = ['Title', 'Property', 'Scheduled Date', 'Shift', 'Assignee', 'Category', 'Status', 'Priority', 'Description', 'Incomplete Reason', 'Completion Notes'];
+    const rows = tasks.map(t => [
+      `"${(t.title || '').replace(/"/g, '""')}"`,
+      `"${(t.propertyName || '').replace(/"/g, '""')}"`,
+      `"${t.scheduledStart || ''}"`,
+      `"${t.shift || ''}"`,
+      `"${(t.assigneeName || '').replace(/"/g, '""')}"`,
+      `"${(t.category || '').replace(/_/g, ' ')}"`,
+      (t.status || 'scheduled').replace(/_/g, ' '),
+      t.priority || 'normal',
+      `"${(t.description || '').replace(/"/g, '""')}"`,
+      `"${(t.incompleteReason || '').replace(/"/g, '""')}"`,
+      `"${(t.completionNotes || '').replace(/"/g, '""')}"`,
+    ].join(','));
+
+    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Schedule_Activities_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast("CSV file downloaded.");
+  };
+
+  useEffect(() => {
+    if (scheduleExportRef) {
+      scheduleExportRef.current = { copyData: copyScheduleData, exportWord: exportToWord, exportCsv: exportToCsv };
+    }
+  });
+
   const statusColor = (s) => {
     const m = { scheduled: darkMode ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600', in_progress: darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-600', completed: darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600', incomplete: darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-50 text-rose-600', cancelled: darkMode ? 'bg-slate-500/10 text-slate-400' : 'bg-slate-100 text-slate-600', overdue: darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-50 text-red-600' };
     return m[s] || (darkMode ? 'bg-slate-500/10 text-slate-400' : 'bg-slate-100 text-slate-600');
@@ -158,6 +368,38 @@ export default function ScheduleView({ darkMode }) {
   }
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  const categoryGroups = useMemo(() => {
+    const groups = {};
+    const categories = [
+      { key: 'bathroom_deep_clean', label: 'Bathroom Deep Clean', icon: 'shower' },
+      { key: 'vent_cleaning', label: 'Vent Cleaning', icon: 'air' },
+      { key: 'general_cleaning', label: 'General Cleaning', icon: 'cleaning_services' },
+      { key: 'night_shift', label: 'Night Shift', icon: 'dark_mode' },
+      { key: 'cockroach_spraying', label: 'Pest Control', icon: 'bug_report' },
+      { key: 'ac_check', label: 'AC Check', icon: 'ac_unit' },
+      { key: 'hardware_check', label: 'Hardware Check', icon: 'build' },
+      { key: 'supplies', label: 'Supplies', icon: 'inventory_2' },
+      { key: 'laundry_pod', label: 'Laundry Pod', icon: 'local_laundry_service' },
+      { key: 'go_key_charge', label: 'Go-Key Charge', icon: 'key' },
+      { key: 'bed_frame_check', label: 'Bed Frame Check', icon: 'bed' },
+      { key: 'curtain_rod_check', label: 'Curtain Rod Check', icon: 'blinds' },
+      { key: 'other', label: 'Other Tasks', icon: 'more_horiz' },
+    ];
+    categories.forEach(c => { groups[c.key] = { ...c, tasks: [] }; });
+    groups['__uncategorized__'] = { key: '__uncategorized__', label: 'Uncategorized', icon: 'label', tasks: [] };
+
+    tasks.forEach(t => {
+      const key = t.category && groups[t.category] ? t.category : '__uncategorized__';
+      groups[key].tasks.push(t);
+    });
+
+    return Object.values(groups).filter(g => g.tasks.length > 0);
+  }, [tasks]);
+
+  const toggleCategory = (key) => {
+    setCollapsedCategories(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <div className="space-y-6">
@@ -182,6 +424,15 @@ export default function ScheduleView({ darkMode }) {
             <button onClick={() => setAssignModal(true)} className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition-all active:scale-[0.97] ${darkMode ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
               <span className="material-symbols-outlined select-none text-lg">add</span>
               Assign
+            </button>
+            <button onClick={copyScheduleData} title="Copy report" className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all active:scale-[0.97] border cursor-pointer ${darkMode ? 'border-white/10 text-slate-300 hover:bg-white/5' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+              <span className="material-symbols-outlined select-none text-[18px]">content_copy</span>
+            </button>
+            <button onClick={exportToWord} title="Download Word document" className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all active:scale-[0.97] border cursor-pointer ${darkMode ? 'border-white/10 text-blue-400 hover:bg-blue-500/10' : 'border-blue-200 text-blue-600 hover:bg-blue-50'}`}>
+              <span className="material-symbols-outlined select-none text-[18px]">download</span> Word
+            </button>
+            <button onClick={exportToCsv} title="Download CSV" className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all active:scale-[0.97] border cursor-pointer ${darkMode ? 'border-white/10 text-emerald-400 hover:bg-emerald-500/10' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}`}>
+              <span className="material-symbols-outlined select-none text-[18px]">download</span> CSV
             </button>
           </div>
         </div>
@@ -288,56 +539,126 @@ export default function ScheduleView({ darkMode }) {
 
       {/*─ List View ──*/}
       {viewMode === 'list' && (
-        <section className="space-y-2">
+        <section className="space-y-6">
           {loading ? <p className="text-center text-slate-400 py-8">Loading...</p> : tasks.length === 0 ? <p className="text-center text-slate-400 py-8">No tasks found. Assign a task or generate from the top bar.</p> : (
-            tasks.map(task => (
-              <article key={task.id} className={`rounded-2xl border p-4 shadow-sm ${task.status === 'overdue' ? (darkMode ? 'border-red-500/20 bg-red-500/[0.03]' : 'border-red-200 bg-red-50') : (darkMode ? 'border-white/10 bg-[#1a1d23]/75' : 'border-white/70 bg-white/70')}`}>
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-bold text-slate-900 dark:text-slate-100 truncate">{task.title}</h4>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${statusColor(task.status)}`}>{task.status.replace('_', ' ')}</span>
-                      {task.priority === 'high' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500">High</span>}
-                      {task.generatedSource && task.generatedSource !== 'ui' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400">auto</span>}
+            categoryGroups.map(group => {
+              const isCollapsed = collapsedCategories[group.key];
+              const completed = group.tasks.filter(t => t.status === 'completed' || t.status === 'cancelled').length;
+              const active = group.tasks.length - completed;
+              return (
+                <div key={group.key}>
+                  <button
+                    onClick={() => toggleCategory(group.key)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all ${darkMode ? 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]' : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'}`}
+                  >
+                    <span className="material-symbols-outlined select-none text-[20px] text-slate-400">{group.icon}</span>
+                    <span className={`flex-1 text-left text-[14px] font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{group.label}</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>{active} active</span>
+                    {completed > 0 && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>{completed} done</span>}
+                    <span className={`material-symbols-outlined select-none text-[18px] transition-transform ${darkMode ? 'text-slate-500' : 'text-slate-400'} ${isCollapsed ? '' : 'rotate-180'}`}>expand_more</span>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div className="space-y-2 mt-2">
+                      {group.tasks.map(task => (
+                        <article key={task.id} className={`rounded-2xl border p-4 shadow-sm ${task.status === 'overdue' ? (darkMode ? 'border-red-500/20 bg-red-500/[0.03]' : 'border-red-200 bg-red-50') : (darkMode ? 'border-white/10 bg-[#1a1d23]/75' : 'border-white/70 bg-white/70')}`}>
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-slate-900 dark:text-slate-100 truncate">{task.title}</h4>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${statusColor(task.status)}`}>{task.status.replace('_', ' ')}</span>
+                                {task.priority === 'high' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500">High</span>}
+                                {task.generatedSource && task.generatedSource !== 'ui' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400">auto</span>}
+                              </div>
+                              <div className="flex gap-3 text-xs text-slate-400 mt-1 flex-wrap">
+                                {task.propertyName && <span>{task.propertyName}</span>}
+                                {task.assigneeName && <span>Assignee: {task.assigneeName}</span>}
+                                {task.scheduledStart && <span>{task.scheduledStart}</span>}
+                                {task.shift && <span>Shift: {task.shift}</span>}
+                                {task.category && <span className="uppercase opacity-60">{task.category.replace(/_/g, ' ')}</span>}
+                                {task.recurrenceReference && <span className="text-violet-400">{formatRecurrence(task.recurrenceReference)}</span>}
+                                {task.parentTaskId && <span className="text-amber-400">Follow-up</span>}
+                              </div>
+                              <div className="flex gap-3 text-[10px] text-slate-500 dark:text-slate-500 mt-1 flex-wrap">
+                                {task.createdByName && <span>Created by: <span className="font-medium text-slate-400">{task.createdByName}</span></span>}
+                                {task.updatedByName && task.updatedByName !== task.createdByName && <span>Updated by: <span className="font-medium text-slate-400">{task.updatedByName}</span></span>}
+                              </div>
+                              {task.incompleteReason && <p className="text-xs text-rose-400 mt-1">Reason: {task.incompleteReason}</p>}
+                              {task.completionNotes && <p className="text-xs text-emerald-400 mt-1">Notes: {task.completionNotes}</p>}
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0 flex-wrap items-center">
+                              <button onClick={() => setEditTask(task)} className="rounded-xl bg-indigo-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-all active:scale-[0.97] border border-indigo-500/20" title="Edit task">
+                                <span className="material-symbols-outlined select-none text-[14px]">edit</span>
+                              </button>
+                              <button onClick={() => { setUpdateModal(task.id); setUpdateText(''); }} className="rounded-xl bg-cyan-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20 transition-all active:scale-[0.97] border border-cyan-500/20" title="Add update">
+                                <span className="material-symbols-outlined select-none text-[14px]">chat</span>
+                              </button>
+                              {task.status === 'scheduled' && (
+                                <>
+                                  <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all active:scale-[0.97] border border-emerald-500/20">Complete</button>
+                                  <button onClick={() => handleIncomplete(task.id)} className="rounded-xl bg-rose-500/10 px-3 py-1.5 text-[12px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-all active:scale-[0.97] border border-rose-500/20">Incomplete</button>
+                                </>
+                              )}
+                              {task.status === 'in_progress' && (
+                                <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all active:scale-[0.97] border border-emerald-500/20">Complete</button>
+                              )}
+                              {task.status === 'incomplete' && (
+                                <button onClick={() => handleFollowUp(task.id)} className="rounded-xl bg-violet-500/10 px-3 py-1.5 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 transition-all active:scale-[0.97] border border-violet-500/20">Follow-up</button>
+                              )}
+                              <select value={task.status} onChange={e => handleStatus(task.id, e.target.value)} className={`rounded-xl px-2 py-1.5 text-xs border ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}>
+                                {STATUSES.filter(s => s.value).map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          {task.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">{task.description}</p>}
+                          {task.updates && Array.isArray(task.updates) && task.updates.length > 0 && (
+                            <div className={`mt-3 border-t pt-2 ${darkMode ? 'border-white/[0.06]' : 'border-slate-100'}`}>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Updates</p>
+                              {task.updates.map((u, i) => (
+                                <div key={i} className={`text-[11px] mb-1.5 pl-2 border-l-2 ${darkMode ? 'border-cyan-500/30 text-slate-300' : 'border-cyan-500/40 text-slate-600'}`}>
+                                  <p>{u.text}</p>
+                                  <p className="text-[9px] text-slate-500 dark:text-slate-500 mt-0.5">— {u.by}, {new Date(u.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </article>
+                      ))}
                     </div>
-                    <div className="flex gap-3 text-xs text-slate-400 mt-1 flex-wrap">
-                      {task.propertyName && <span>{task.propertyName}</span>}
-                      {task.assigneeName && <span>Assignee: {task.assigneeName}</span>}
-                      {task.scheduledStart && <span>{task.scheduledStart}</span>}
-                      {task.shift && <span>Shift: {task.shift}</span>}
-                      {task.category && <span className="uppercase opacity-60">{task.category.replace(/_/g, ' ')}</span>}
-                      {task.recurrenceReference && <span className="text-violet-400">{formatRecurrence(task.recurrenceReference)}</span>}
-                      {task.parentTaskId && <span className="text-amber-400">Follow-up</span>}
-                    </div>
-                    {task.incompleteReason && <p className="text-xs text-rose-400 mt-1">Reason: {task.incompleteReason}</p>}
-                    {task.completionNotes && <p className="text-xs text-emerald-400 mt-1">Notes: {task.completionNotes}</p>}
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0 flex-wrap">
-                    {task.status === 'scheduled' && (
-                      <>
-                        <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all active:scale-[0.97] border border-emerald-500/20">Complete</button>
-                        <button onClick={() => handleIncomplete(task.id)} className="rounded-xl bg-rose-500/10 px-3 py-1.5 text-[12px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-all active:scale-[0.97] border border-rose-500/20">Incomplete</button>
-                      </>
-                    )}
-                    {task.status === 'in_progress' && (
-                      <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all active:scale-[0.97] border border-emerald-500/20">Complete</button>
-                    )}
-                    {task.status === 'incomplete' && (
-                      <button onClick={() => handleFollowUp(task.id)} className="rounded-xl bg-violet-500/10 px-3 py-1.5 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 transition-all active:scale-[0.97] border border-violet-500/20">Follow-up</button>
-                    )}
-                    <select value={task.status} onChange={e => handleStatus(task.id, e.target.value)} className={`rounded-xl px-2 py-1.5 text-xs border ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}>
-                      {STATUSES.filter(s => s.value).map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
-                  </div>
+                  )}
                 </div>
-                {task.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">{task.description}</p>}
-              </article>
-            ))
+              );
+            })
           )}
         </section>
       )}
 
       <TaskAssignModal open={assignModal} onClose={() => setAssignModal(false)} onSave={handleAssign} darkMode={darkMode} />
+      <TaskAssignModal open={!!editTask} onClose={() => setEditTask(null)} onSave={handleEdit} darkMode={darkMode} task={editTask} />
+
+      {updateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className={`w-full max-w-sm rounded-2xl shadow-2xl border overflow-hidden ${darkMode ? 'bg-[#1c1f26] border-white/[0.08]' : 'bg-white border-slate-200'}`}>
+            <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-white/[0.06]' : 'border-slate-100'}`}>
+              <h3 className={`text-base font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Add Update</h3>
+              <button onClick={() => { setUpdateModal(null); setUpdateText(''); }} className={`w-8 h-8 rounded-lg flex items-center justify-center ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                <span className="material-symbols-outlined select-none text-lg">close</span>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <textarea value={updateText} onChange={e => setUpdateText(e.target.value)} rows={3} placeholder="What's the update?" className={`w-full rounded-xl px-3.5 py-2.5 text-[13px] outline-none transition-colors resize-none ${darkMode ? 'bg-white/[0.05] border border-white/[0.08] text-slate-200 focus:border-cyan-500/40' : 'bg-slate-50 border border-slate-200 text-slate-800 focus:border-cyan-300'}`} autoFocus />
+              <div className="flex gap-3">
+                <button onClick={() => { setUpdateModal(null); setUpdateText(''); }} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${darkMode ? 'border-white/[0.08] text-slate-400 hover:bg-white/[0.04]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                  Cancel
+                </button>
+                <button onClick={() => handleAddUpdate(updateModal)} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all active:scale-[0.97] ${darkMode ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                  Add Update
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

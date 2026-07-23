@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const CATEGORIES = [
   { value: 'bathroom_deep_clean', label: 'Bathroom Deep Clean' },
@@ -29,19 +29,66 @@ const RECUR_TYPES = [
   { value: 'custom', label: 'Custom...' },
 ];
 
-export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
+function parseRecurrence(ref) {
+  if (!ref) return { recurrenceType: 'none', customInterval: 3, customUnit: 'days' };
+  const parts = ref.split(':');
+  if (parts[0] === 'daily') return { recurrenceType: 'daily', customInterval: 1, customUnit: 'days' };
+  if (parts[0] === 'weekly' && parts[1] === '1') return { recurrenceType: 'weekly', customInterval: 1, customUnit: 'weeks' };
+  if (parts[0] === 'weekly' && parts[1] === '2') return { recurrenceType: 'biweekly', customInterval: 2, customUnit: 'weeks' };
+  if (parts[0] === 'monthly') return { recurrenceType: 'monthly', customInterval: 1, customUnit: 'months' };
+  if (parts[0] === 'custom') return { recurrenceType: 'custom', customInterval: parseInt(parts[1]) || 3, customUnit: parts[2] || 'days' };
+  return { recurrenceType: 'none', customInterval: 3, customUnit: 'days' };
+}
+
+export default function TaskAssignModal({ open, onClose, onSave, darkMode, task }) {
+  const isEdit = !!task;
+
   const emptyForm = () => ({
     title: '', category: 'general_cleaning', propertyName: '', scheduledStart: new Date().toISOString().split('T')[0],
     shift: 'morning', assigneeName: '', assignedRole: 'cleaner', priority: 'medium', description: '',
     recurrenceType: 'none', customInterval: 3, customUnit: 'days',
   });
 
-  const [form, setForm] = useState(emptyForm());
-  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+  const buildForm = () => {
+    if (!task) return emptyForm();
+    const rec = parseRecurrence(task.recurrenceReference);
+    return {
+      title: task.title || '',
+      category: task.category || 'general_cleaning',
+      propertyName: task.propertyName || '',
+      scheduledStart: task.scheduledStart || new Date().toISOString().split('T')[0],
+      shift: task.shift || 'morning',
+      assigneeName: task.assigneeName || '',
+      assignedRole: task.assignedRole || 'cleaner',
+      priority: task.priority || 'medium',
+      description: task.description || '',
+      ...rec,
+    };
+  };
 
-  const handleSubmit = (e) => {
+  const [form, setForm] = useState(buildForm());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (key, val) => { setForm(prev => ({ ...prev, [key]: val })); setError(''); };
+
+  useEffect(() => {
+    if (open) setForm(buildForm());
+  }, [open, task]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.propertyName) return;
+    if (!form.title.trim() && !form.propertyName) {
+      setError('Title and Property are required');
+      return;
+    }
+    if (!form.title.trim()) {
+      setError('Task title is required');
+      return;
+    }
+    if (!form.propertyName) {
+      setError('Property is required');
+      return;
+    }
 
     let recurrenceReference = null;
     if (form.recurrenceType === 'daily') recurrenceReference = 'daily:1:days';
@@ -50,8 +97,19 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
     else if (form.recurrenceType === 'monthly') recurrenceReference = 'monthly:1:months';
     else if (form.recurrenceType === 'custom') recurrenceReference = `custom:${form.customInterval}:${form.customUnit}`;
 
-    onSave({ ...form, recurrenceReference });
-    setForm(emptyForm());
+    setSaving(true);
+    setError('');
+    try {
+      const { recurrenceType, customInterval, customUnit, ...apiData } = form;
+      const payload = { ...apiData, recurrenceReference };
+      if (isEdit) payload.id = task.id;
+      await onSave(payload);
+      if (!isEdit) setForm(emptyForm());
+    } catch {
+      setError('Failed to save task. Check console for details.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!open) return null;
@@ -63,7 +121,9 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className={`w-full max-w-md rounded-2xl shadow-2xl border overflow-hidden animate-fade-in-up ${darkMode ? 'bg-[#1c1f26] border-white/[0.08]' : 'bg-white border-slate-200'}`}>
         <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? 'border-white/[0.06]' : 'border-slate-100'}`}>
-          <h3 className={`text-base font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Assign Task</h3>
+          <h3 className={`text-base font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+            {isEdit ? 'Edit Task' : 'Assign Task'}
+          </h3>
           <button onClick={onClose} className={`w-8 h-8 rounded-lg flex items-center justify-center ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
             <span className="material-symbols-outlined select-none text-lg">close</span>
           </button>
@@ -128,33 +188,36 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
             </div>
           </div>
 
-          {/* Recurrence */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recurrence</label>
-            <select value={form.recurrenceType} onChange={e => set('recurrenceType', e.target.value)} className={selectCls}>
-              {RECUR_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
-          </div>
-
-          {form.recurrenceType === 'custom' && (
-            <div className={`grid grid-cols-2 gap-3 p-3 rounded-xl border ${darkMode ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-slate-50 border-slate-100'}`}>
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Repeat every</label>
-                <input
-                  type="number" min="1" value={form.customInterval}
-                  onChange={e => set('customInterval', Math.max(1, parseInt(e.target.value) || 1))}
-                  className={input}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Unit</label>
-                <select value={form.customUnit} onChange={e => set('customUnit', e.target.value)} className={selectCls}>
-                  <option value="days">Days</option>
-                  <option value="weeks">Weeks</option>
-                  <option value="months">Months</option>
+          {!isEdit && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recurrence</label>
+                <select value={form.recurrenceType} onChange={e => set('recurrenceType', e.target.value)} className={selectCls}>
+                  {RECUR_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
-            </div>
+
+              {form.recurrenceType === 'custom' && (
+                <div className={`grid grid-cols-2 gap-3 p-3 rounded-xl border ${darkMode ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-slate-50 border-slate-100'}`}>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Repeat every</label>
+                    <input
+                      type="number" min="1" value={form.customInterval}
+                      onChange={e => set('customInterval', Math.max(1, parseInt(e.target.value) || 1))}
+                      className={input}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Unit</label>
+                    <select value={form.customUnit} onChange={e => set('customUnit', e.target.value)} className={selectCls}>
+                      <option value="days">Days</option>
+                      <option value="weeks">Weeks</option>
+                      <option value="months">Months</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex flex-col gap-1.5">
@@ -162,12 +225,16 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
             <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2} placeholder="Any special instructions..." className={`${input} resize-none`} />
           </div>
 
+          {error && (
+            <p className="text-[12px] font-semibold text-red-400 bg-red-500/10 px-3 py-2 rounded-xl border border-red-500/20">{error}</p>
+          )}
+
           <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${darkMode ? 'border-white/[0.08] text-slate-400 hover:bg-white/[0.04]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+            <button type="button" onClick={onClose} disabled={saving} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${darkMode ? 'border-white/[0.08] text-slate-400 hover:bg-white/[0.04]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'} disabled:opacity-40`}>
               Cancel
             </button>
-            <button type="submit" className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all active:scale-[0.97] ${darkMode ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-slate-900 hover:bg-slate-800'}`}>
-              Assign Task
+            <button type="submit" disabled={saving} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all active:scale-[0.97] ${darkMode ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-slate-900 hover:bg-slate-800'} disabled:opacity-40`}>
+              {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Assign Task'}
             </button>
           </div>
         </form>

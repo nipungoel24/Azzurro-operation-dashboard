@@ -9,15 +9,18 @@ export default function EmptyRoomsLive({ darkMode }) {
   const [error, setError] = useState(null);
   const [filterProperty, setFilterProperty] = useState('All');
   const [lastSync, setLastSync] = useState(null);
+  const [lastFetchTime, setLastFetchTime] = useState(null);
 
-  const fetchEmptyRooms = async () => {
+  const fetchEmptyRooms = async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/empty-rooms');
+      const url = force ? '/api/empty-rooms?refresh=true' : '/api/empty-rooms';
+      const res = await fetch(url);
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       const data = await res.json();
       setRoomsData(data);
+      setLastFetchTime(new Date());
     } catch (err) {
       setError(err.message);
     } finally {
@@ -32,8 +35,8 @@ export default function EmptyRoomsLive({ darkMode }) {
       const res = await fetch('/api/empty-rooms/sync', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setLastSync(new Date().toLocaleString());
-        fetchEmptyRooms();
+        setLastSync(new Date());
+        fetchEmptyRooms(true);
       } else {
         setError(data.error);
       }
@@ -93,7 +96,8 @@ export default function EmptyRoomsLive({ darkMode }) {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {lastSync && <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Last sync: {lastSync}</span>}
+            {lastFetchTime && <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Loaded: {lastFetchTime.toLocaleTimeString()}</span>}
+            {lastSync && <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Synced: {lastSync.toLocaleTimeString()}</span>}
             <button onClick={handleSync} disabled={syncing} className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50">
               {syncing ? 'Syncing...' : 'Sync Now'}
             </button>
@@ -139,9 +143,16 @@ export default function EmptyRoomsLive({ darkMode }) {
                   </div>
                 </div>
                 {(prop.apiSuspect || prop.roomsSuspect || prop.authFailed) && (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/10 text-amber-500 font-bold">
-                    {prop.authFailed ? 'Auth Failed' : 'Data Suspect'}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${prop.authFailed ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-500'}`}>
+                      {prop.authFailed ? 'Auth Failed' : 'Data Suspect'}
+                    </span>
+                    {prop.fetchError && (
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full ${darkMode ? 'bg-red-500/5 text-red-400/70' : 'bg-red-50 text-red-500'}`} title={prop.fetchError}>
+                        {prop.fetchError.length > 60 ? prop.fetchError.slice(0, 60) + '...' : prop.fetchError}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -166,8 +177,9 @@ export default function EmptyRoomsLive({ darkMode }) {
                 </div>
               ) : (
                 <p className={`text-sm text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {prop.apiSuspect ? 'Unable to determine empty rooms — API data suspect.' :
-                   prop.authFailed ? 'Cloudbeds authentication failed for this property. Set API keys in environment variables.' :
+                  {prop.authFailed ? 'Cloudbeds authentication failed for this property. Set API keys in environment variables.' :
+                   prop.fetchError ? `${prop.fetchError}` :
+                   prop.apiSuspect ? 'Unable to determine empty rooms — API data suspect. Try Sync Now.' :
                    'No empty rooms reported.'}
                 </p>
               )}

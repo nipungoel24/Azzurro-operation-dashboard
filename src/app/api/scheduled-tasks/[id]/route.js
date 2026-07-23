@@ -32,7 +32,7 @@ export async function PUT(request, { params }) {
       return NextResponse.json(task);
     }
 
-    const task = await updateScheduledTask(id, body, { email: session.user.email, name: session.user.name });
+    const task = await updateScheduledTask(id, { ...body, id: undefined }, { email: session.user.email, name: session.user.name });
     return NextResponse.json(task);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

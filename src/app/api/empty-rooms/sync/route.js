@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import { fetchEmptyRooms } from '@/services/cloudbeds';
+import { fetchEmptyRooms, invalidateRoomCache } from '@/services/cloudbeds';
 import { prisma } from '@/lib/prisma';
 import { createAuditLog, SOURCES } from '@/services/audit';
 
@@ -14,6 +14,8 @@ export async function POST(request) {
 
     const today = new Date().toISOString().split('T')[0];
 
+    invalidateRoomCache();
+
     const syncRun = await prisma.cloudbedsSyncRun.create({
       data: {
         status: 'running',
@@ -22,7 +24,7 @@ export async function POST(request) {
     });
 
     try {
-      const data = await fetchEmptyRooms(today);
+      const data = await fetchEmptyRooms(today, true);
       let totalRooms = 0;
       let totalUpdated = 0;
 

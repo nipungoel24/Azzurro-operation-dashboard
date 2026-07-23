@@ -277,7 +277,7 @@ export async function generateVentCleaningTasks(user, {
   for (const dateStr of dates) {
     const todayBaths = bathrooms.filter(b => {
       const last = b.lastVentCleanedAt;
-      if (!last) return false;
+      if (!last) return true;
       const daysSince = (new Date(dateStr + 'T00:00:00') - new Date(last)) / 86400000;
       return daysSince >= 3;
     });
@@ -437,15 +437,19 @@ export async function createFollowUpShift(incompleteTaskId, user, {
 
 export async function checkOverdueTasks() {
   const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' })).toISOString().split('T')[0];
+
   const overdue = await prisma.scheduledTask.findMany({
     where: { status: { in: ['scheduled', 'in_progress'] }, scheduledStart: { lt: today } },
   });
 
+  if (overdue.length === 0) return overdue;
+
+  await prisma.scheduledTask.updateMany({
+    where: { id: { in: overdue.map(t => t.id) }, status: { in: ['scheduled', 'in_progress'] } },
+    data: { status: 'overdue' },
+  });
+
   for (const task of overdue) {
-    await prisma.scheduledTask.update({
-      where: { id: task.id },
-      data: { status: 'overdue', version: (task.version || 1) + 1 },
-    });
     await createAuditLog({
       entityType: 'scheduled_task', entityId: task.id, action: 'UPDATE',
       changedByEmail: 'system', changedByName: 'System',

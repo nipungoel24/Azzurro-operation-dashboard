@@ -1,13 +1,11 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { PROPERTIES, RESPONSIBLE_USERS, getStatusesConfig } from "../constants";
-import { getRecurrenceLabel } from "../utils/recurrence";
 import { Icons } from "../components/Icons";
 import Sidebar from "../components/Sidebar";
 import SprintBoard from "../components/SprintBoard";
-import TrackerSheet from "../components/TrackerSheet";
-import EmptyRoomsChecklist from "../components/EmptyRoomsChecklist";
+import EmptyRoomsLive from "../components/EmptyRoomsLive";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskModal from "../components/TaskModal";
 import ReminderModal from "../components/ReminderModal";
@@ -15,7 +13,6 @@ import ReminderOverlay from "../components/ReminderOverlay";
 import FloatingControlPill from "../components/FloatingControlPill";
 import FacilityManager from "../components/FacilityManager";
 import ScheduleView from "../components/ScheduleView";
-import EmptyRoomsLive from "../components/EmptyRoomsLive";
 import ActivityHistory from "../components/ActivityHistory";
 import ShiftHandoffPanel from "../components/ShiftHandoffPanel";
 import ChatbotPanel from "../components/ChatbotPanel";
@@ -234,15 +231,15 @@ export default function Home() {
     return localStorage.getItem("ops_dashboard_dark") === "true";
   });
   const [toast, setToast] = useState(null);
-  const [emptyRoomsData, setEmptyRoomsData] = useState([]);
-  const [emptyRoomsDate, setEmptyRoomsDate] = useState(getTodayStr());
-  const [emptyRoomInput, setEmptyRoomInput] = useState("");
+  const toastTimerRef = useRef(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
     }
   }, [status, router]);
+
+  useEffect(() => () => clearTimeout(toastTimerRef.current), []);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -326,6 +323,9 @@ export default function Home() {
   // Pill dock generation state
   const [generatingFromPill, setGeneratingFromPill] = useState(null);
 
+  // Schedule export ref
+  const scheduleExportRef = useRef(null);
+
   const handleGenerateFromPill = async (mode) => {
     setGeneratingFromPill(mode);
     try {
@@ -387,7 +387,8 @@ export default function Home() {
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
 
     if ("Notification" in window && Notification.permission === "granted") {
       try {
@@ -630,6 +631,7 @@ export default function Home() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
+      const toNotify = [];
       setTasks((prev) => {
         let changed = false;
         const nextTasks = prev.map((t) => {
@@ -637,7 +639,7 @@ export default function Home() {
             const remDate = new Date(t.reminderTime);
             if (now >= remDate) {
               changed = true;
-              triggerNotification(t);
+              toNotify.push(t);
               return { ...t, reminderTriggered: true };
             }
           }
@@ -645,6 +647,7 @@ export default function Home() {
         });
         return changed ? nextTasks : prev;
       });
+      toNotify.forEach(t => triggerNotification(t));
     }, 6000);
 
     return () => clearInterval(interval);
@@ -816,7 +819,7 @@ export default function Home() {
   };
 
   const handleCopyFollowUp = (task) => {
-    const msg = `Hi ${task.responsible || "team"}, quick update needed on Azzurro task "${task.title}" at ${task.property}. Can you please let us know how this is going? Thank you!`;
+    const msg = `Hi ${task.responsible || 'team'} 👋\n\nQuick update needed on the task:\n\n*Task:* ${task.title}\n*Property:* _${task.property}_\n*Status:* ${task.status}\n\nCan you please update on progress? Thank you!`;
     copyToClipboard(msg, "WhatsApp follow-up template copied to clipboard!");
   };
 
@@ -830,191 +833,12 @@ export default function Home() {
       });
   };
 
-  const copyTrackerData = () => {
-    const propertiesToRender = PROPERTIES.filter((p) => p !== "All");
-
-    // Group active tasks by property
-    const tasksByProperty = {};
-    propertiesToRender.forEach((p) => {
-      tasksByProperty[p] = tasks.filter(
-        (t) => t.property === p && t.status !== "Done",
-      );
-    });
-
-    let text = `========================================\nAZZURRO HOTEL - DAILY OPERATIONS TRACKER REPORT\nDate: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}\n========================================\n\n`;
-
-    propertiesToRender.forEach((prop) => {
-      text += `📍 ${prop.toUpperCase()}\n`;
-      tasksByProperty[prop].forEach((t) => {
-        const recurrenceStr =
-          t.recurrence && t.recurrence !== "none"
-            ? ` | Recurrence: ${getRecurrenceLabel(t.recurrence)}`
-            : "";
-        text += `  • [${t.status.toUpperCase()}] ${t.title} (Due: ${t.dueDate})\n`;
-        text += `    Assignee: ${t.responsible}${recurrenceStr}\n`;
-        text += `    Last Update: ${t.lastUpdated}\n`;
-        if (t.updates && t.updates.length > 0) {
-          text += `    Updates:\n`;
-          t.updates.forEach((u) => {
-            text += `      - [${u.timestamp}] ${u.text}\n`;
-          });
-        }
-        text += `\n`;
-      });
-      if (tasksByProperty[prop].length === 0) {
-        text += `  • All tasks completed or clear for today.\n\n`;
-      }
-    });
-
-    copyToClipboard(text, "Executive Tracker Report copied to clipboard!");
-  };
-
-  const handleAddEmptyRoom = () => {
-    const roomNumber = emptyRoomInput.trim();
-    if (!roomNumber) {
-      showToast("Please enter a room number.");
-      return;
-    }
-
-    if (filterProperty === "All") {
-      showToast("Choose a property before adding an empty room.");
-      return;
-    }
-
-    const duplicateExists = emptyRoomsData.some(
-      (room) =>
-        room.date === emptyRoomsDate &&
-        room.property === filterProperty &&
-        room.roomNumber.toLowerCase() === roomNumber.toLowerCase(),
-    );
-
-    if (duplicateExists) {
-      showToast("That room is already on today's checklist for this property.");
-      return;
-    }
-
-    setEmptyRoomsData((prev) => [
-      {
-        id:
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `empty-room-${Date.now()}`,
-        date: emptyRoomsDate,
-        property: filterProperty,
-        roomNumber,
-        ac: "Off",
-        pest: "Pending",
-        clean: "Pending",
-        light: "Off",
-      },
-      ...prev,
-    ]);
-    setEmptyRoomInput("");
-    showToast(`Room ${roomNumber} added to the checklist.`);
-  };
-
-  const handleToggleEmptyRoomStatus = (roomId, field, value) => {
-    setEmptyRoomsData((prev) =>
-      prev.map((room) =>
-        room.id === roomId ? { ...room, [field]: value } : room,
-      ),
-    );
-  };
-
-  const handleDeleteEmptyRoom = (roomId) => {
-    setEmptyRoomsData((prev) => prev.filter((room) => room.id !== roomId));
-    showToast("Empty room removed from checklist.");
-  };
-
-  const exportToWord = () => {
-    const propertiesToRender = PROPERTIES.filter((p) => p !== "All");
-    const tasksByProperty = {};
-    propertiesToRender.forEach((p) => {
-      tasksByProperty[p] = tasks.filter((t) => t.property === p);
-    });
-
-    const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head>
-      <title>Ops Tracker Report</title>
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #333333; margin: 1in; }
-        h1 { color: #0a1b33; border-bottom: 2px solid #e3ded0; padding-bottom: 8px; font-size: 20pt; }
-        h2 { color: #5c5446; font-size: 14pt; margin-top: 20pt; }
-        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-        th, td { border: 1px solid #e3ded0; padding: 10px; text-align: left; }
-        th { background-color: #f0ece1; color: #5c5446; font-weight: bold; }
-        .status { font-weight: bold; text-transform: uppercase; font-size: 9pt; }
-      </style>
-    </head>
-    <body>
-      <h1>AZZURRO HOTEL - DAILY OPERATIONS TRACKER</h1>
-      <p>Report Date: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>`;
-
-    let content = "";
-    propertiesToRender.forEach((prop) => {
-      content += `<h2>📍 Property: ${prop}</h2>`;
-      content += `<table>
-        <tr>
-          <th>Task / Tracker Item</th>
-          <th>Assignee</th>
-          <th>Status</th>
-          <th>Recurrence</th>
-          <th>Due Date</th>
-        </tr>`;
-
-      tasksByProperty[prop].forEach((t) => {
-        content += `<tr>
-          <td><b>${t.title}</b><br/><small style="color:#777">${t.description || ""}</small></td>
-          <td>${t.responsible}</td>
-          <td class="status">${t.status}</td>
-          <td>${getRecurrenceLabel(t.recurrence)}</td>
-          <td>${t.dueDate}</td>
-        </tr>`;
-      });
-
-      if (tasksByProperty[prop].length === 0) {
-        content += `<tr><td colspan="5" style="text-align:center; color:#888">No tracked items for this location.</td></tr>`;
-      }
-      content += `</table>`;
-    });
-
-    const footer = "</body></html>";
-    const sourceHTML = header + content + footer;
-    const source =
-      "data:application/vnd.ms-word;charset=utf-8," +
-      encodeURIComponent(sourceHTML);
-    const fileDownload = document.createElement("a");
-    document.body.appendChild(fileDownload);
-    fileDownload.href = source;
-    fileDownload.download = `Ops_Tracker_${new Date().toISOString().slice(0, 10)}.doc`;
-    fileDownload.click();
-    document.body.removeChild(fileDownload);
-    showToast("Word document generated.");
-  };
-
   const filteredPropertyTasks = tasks.filter((t) => {
     if (filterProperty === "All") return true;
     return t.property === filterProperty;
   });
 
-  const filteredEmptyRooms = useMemo(() => {
-    return emptyRoomsData
-      .filter((room) => {
-        const matchesDate = room.date === emptyRoomsDate;
-        const matchesProperty =
-          filterProperty === "All" || room.property === filterProperty;
-        return matchesDate && matchesProperty;
-      })
-      .sort((a, b) =>
-        a.roomNumber.localeCompare(b.roomNumber, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        }),
-      );
-  }, [emptyRoomsData, emptyRoomsDate, filterProperty]);
-
-  const trackerProperties = PROPERTIES;
-  const showStandardFilters = activeView === "board" || activeView === "tracker-global";
+  const showStandardFilters = activeView === "board";
 
   // Calculate live count totals for headers
   const pendingCount = useMemo(() => {
@@ -1075,44 +899,40 @@ export default function Home() {
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
               {activeView === "board"
                 ? "Task Schedule"
-                : activeView === "tracker-empty-rooms"
-                  ? "Room Care Workflow"
-                  : activeView === "empty-rooms-live"
-                    ? "Cloudbeds Integration"
-                    : activeView === "schedule"
-                      ? "Cleaning & Maintenance"
-                      : activeView === "facilities"
-                        ? "Property Infrastructure"
-                        : activeView === "handoffs"
-                          ? "Shift Management"
-                          : activeView === "history"
-                            ? "Audit & Compliance"
-                            : "Location Checklists"}
+                : activeView === "empty-rooms-live"
+                  ? "Cloudbeds Integration"
+                  : activeView === "schedule"
+                    ? "Cleaning & Maintenance"
+                    : activeView === "facilities"
+                      ? "Property Infrastructure"
+                      : activeView === "handoffs"
+                        ? "Shift Management"
+                        : activeView === "history"
+                          ? "Audit & Compliance"
+                          : "Scheduled Activities"}
             </span>
             <h2 className="text-3xl font-black font-serif-display leading-tight tracking-tight mt-1">
               {activeView === "board"
                 ? "Daily Operations"
-                : activeView === "tracker-empty-rooms"
-                  ? "Empty Rooms Checklist"
-                  : activeView === "empty-rooms-live"
-                    ? "Empty Rooms — Live"
-                    : activeView === "schedule"
-                      ? "Scheduled Activities"
-                      : activeView === "facilities"
-                        ? "Facility Inventory"
-                        : activeView === "property-inventory"
-                          ? "Property Overview"
-                          : activeView === "room-inventory"
-                            ? "Room Inventory"
-                            : activeView === "bathroom-inventory"
-                              ? "Bathroom Inventory"
-                              : activeView === "review-queue"
-                                ? "Review Queue"
-                                : activeView === "handoffs"
-                                  ? "Shift Handoffs"
-                                  : activeView === "history"
-                                    ? "Activity History"
-                                    : "Global Task Tracker"}
+                : activeView === "empty-rooms-live"
+                  ? "Empty Rooms — Live"
+                  : activeView === "schedule"
+                    ? "Scheduled Activities"
+                    : activeView === "facilities"
+                      ? "Facility Inventory"
+                      : activeView === "property-inventory"
+                        ? "Property Overview"
+                        : activeView === "room-inventory"
+                          ? "Room Inventory"
+                          : activeView === "bathroom-inventory"
+                            ? "Bathroom Inventory"
+                            : activeView === "review-queue"
+                              ? "Review Queue"
+                              : activeView === "handoffs"
+                                ? "Shift Handoffs"
+                                : activeView === "history"
+                                  ? "Activity History"
+                                  : "Scheduled Activities"}
             </h2>
           </div>
 
@@ -1194,25 +1014,10 @@ export default function Home() {
                 handleStatusChange={handleStatusChange}
               />
             </div>
-          ) : activeView === "tracker-empty-rooms" ? (
-            <EmptyRoomsChecklist
-              darkMode={darkMode}
-              properties={trackerProperties}
-              filterProperty={filterProperty}
-              setFilterProperty={setFilterProperty}
-              checklistDate={emptyRoomsDate}
-              setChecklistDate={setEmptyRoomsDate}
-              emptyRoomInput={emptyRoomInput}
-              setEmptyRoomInput={setEmptyRoomInput}
-              emptyRooms={filteredEmptyRooms}
-              onAddRoom={handleAddEmptyRoom}
-              onToggleStatus={handleToggleEmptyRoomStatus}
-              onDeleteRoom={handleDeleteEmptyRoom}
-            />
           ) : activeView === "empty-rooms-live" ? (
             <EmptyRoomsLive darkMode={darkMode} />
           ) : activeView === "schedule" ? (
-            <ScheduleView darkMode={darkMode} />
+            <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} />
           ) : activeView === "facilities" ? (
             <FacilityManager darkMode={darkMode} />
           ) : activeView === "handoffs" ? (
@@ -1228,22 +1033,7 @@ export default function Home() {
           ) : activeView === "review-queue" ? (
             <ReviewQueue darkMode={darkMode} />
           ) : (
-            <TrackerSheet
-              tasks={tasks}
-              statuses={STATUSES}
-              darkMode={darkMode}
-              filterProperty={filterProperty}
-              openEditTaskModal={openEditTaskModal}
-              handleDeleteTask={handleDeleteTask}
-              handleCompleteTask={handleCompleteTask}
-              handleCopyFollowUp={handleCopyFollowUp}
-              handleOpenReminderModal={handleOpenReminderModal}
-              handleStatusChange={handleStatusChange}
-              handleUpdateRecurrence={handleUpdateRecurrence}
-              showToast={showToast}
-              copyTrackerData={copyTrackerData}
-              exportToWord={exportToWord}
-            />
+            <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} />
           )}
         </div>
       </main>
@@ -1255,13 +1045,13 @@ export default function Home() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
         openCreateTaskModal={openCreateTaskModal}
-        copyTrackerData={copyTrackerData}
         onGenerateBathrooms={handleGenerateFromPill}
         onGenerateVents={handleGenerateFromPill}
         onGenerateDaily={handleGenerateFromPill}
         onSyncEmptyRooms={handleSyncEmptyRooms}
         onAddFacility={handleAddFacility}
         onAddHandoff={handleAddHandoff}
+        scheduleExportRef={scheduleExportRef}
         generatingState={generatingFromPill}
       />
 

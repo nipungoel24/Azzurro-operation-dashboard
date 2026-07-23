@@ -25,14 +25,11 @@ export default function Sidebar({
 
   const [sydneyTime, setSydneyTime] = useState('');
   const [sydneyDate, setSydneyDate] = useState('');
-  const [trackersOpen, setTrackersOpen] = useState(false);
   const [facilitiesOpen, setFacilitiesOpen] = useState(false);
 
-  const isTrackersActive = ['tracker-global', 'tracker-empty-rooms', 'empty-rooms-live'].includes(activeView);
   const isFacilitiesActive = ['facilities', 'property-inventory', 'room-inventory', 'bathroom-inventory', 'review-queue'].includes(activeView);
 
   useEffect(() => {
-    if (isTrackersActive && !sidebarCollapsed) setTrackersOpen(true);
     if (isFacilitiesActive && !sidebarCollapsed) setFacilitiesOpen(true);
   }, [activeView, sidebarCollapsed]);
 
@@ -94,44 +91,6 @@ export default function Sidebar({
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Sprint Board</span>}
         </button>
 
-        {/* Trackers Section */}
-        <div className="space-y-1">
-          <button
-            onClick={() => {
-              if (sidebarCollapsed) { setActiveView('tracker-global'); return; }
-              setTrackersOpen(!trackersOpen);
-              if (!isTrackersActive) setActiveView('tracker-global');
-            }}
-            className={sidebarBtn(isTrackersActive, 'Trackers')}
-            title="Trackers"
-          >
-            <Icons.Tracker />
-            {!sidebarCollapsed && (
-              <>
-                <span className="animate-fade-in font-medium flex-1 text-left">Trackers</span>
-                <Icons.ChevronDown className={`transition-transform ${trackersOpen ? 'rotate-0' : '-rotate-90'}`} />
-              </>
-            )}
-          </button>
-
-          {!sidebarCollapsed && trackersOpen && (
-            <div className={`ml-4 space-y-1 rounded-2xl border px-2 py-2 ${darkMode ? 'border-white/8 bg-white/[0.03]' : 'border-[#e7e1d3] bg-white/40'}`}>
-              <button onClick={() => setActiveView("tracker-global")} className={subBtn(activeView === "tracker-global")}>
-                <NavIcon name="assignment" />
-                <span className="font-medium">Global Task Tracker</span>
-              </button>
-              <button onClick={() => setActiveView("tracker-empty-rooms")} className={subBtn(activeView === "tracker-empty-rooms")}>
-                <NavIcon name="checklist" />
-                <span className="font-medium">Empty Rooms Checklist</span>
-              </button>
-              <button onClick={() => setActiveView("empty-rooms-live")} className={subBtn(activeView === "empty-rooms-live")}>
-                <NavIcon name="hotel" />
-                <span className="font-medium">Empty Rooms -- Live</span>
-              </button>
-            </div>
-          )}
-        </div>
-
         {!sidebarCollapsed && (
           <div className="mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 px-3 animate-fade-in">Operations</div>
         )}
@@ -142,6 +101,11 @@ export default function Sidebar({
         <button onClick={() => setActiveView("schedule")} className={sidebarBtn(activeView === 'schedule')} title="Scheduled Activities">
           <NavIcon name="calendar_month" />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Scheduled Activities</span>}
+        </button>
+
+        <button onClick={() => setActiveView("empty-rooms-live")} className={sidebarBtn(activeView === 'empty-rooms-live')} title="Empty Rooms Live">
+          <NavIcon name="hotel" />
+          {!sidebarCollapsed && <span className="animate-fade-in font-medium">Empty Rooms — Live</span>}
         </button>
 
         {/* Facilities Section */}
