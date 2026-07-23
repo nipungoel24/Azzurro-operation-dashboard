@@ -7,11 +7,24 @@ import { Icons } from "../components/Icons";
 import Sidebar from "../components/Sidebar";
 import SprintBoard from "../components/SprintBoard";
 import TrackerSheet from "../components/TrackerSheet";
+import EmptyRoomsChecklist from "../components/EmptyRoomsChecklist";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskModal from "../components/TaskModal";
 import ReminderModal from "../components/ReminderModal";
 import ReminderOverlay from "../components/ReminderOverlay";
 import FloatingControlPill from "../components/FloatingControlPill";
+import FacilityManager from "../components/FacilityManager";
+import ScheduleView from "../components/ScheduleView";
+import EmptyRoomsLive from "../components/EmptyRoomsLive";
+import ActivityHistory from "../components/ActivityHistory";
+import ShiftHandoffPanel from "../components/ShiftHandoffPanel";
+import ChatbotPanel from "../components/ChatbotPanel";
+import PropertyInventory from "../components/PropertyInventory";
+import RoomInventory from "../components/RoomInventory";
+import BathroomInventory from "../components/BathroomInventory";
+import ReviewQueue from "../components/ReviewQueue";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const INITIAL_TASKS = [
   {
@@ -205,13 +218,84 @@ Central Cleaning`,
 ];
 
 export default function Home() {
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const getTodayStr = () => new Date().toISOString().split("T")[0];
+
+  const [tasks, setTasks] = useState([]);
   const [activeView, setActiveView] = useState("board");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filterProperty, setFilterProperty] = useState("All");
-  const [darkMode, setDarkMode] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
 
+    return localStorage.getItem("ops_dashboard_dark") === "true";
+  });
+  const [toast, setToast] = useState(null);
+  const [emptyRoomsData, setEmptyRoomsData] = useState([]);
+  const [emptyRoomsDate, setEmptyRoomsDate] = useState(getTodayStr());
+  const [emptyRoomInput, setEmptyRoomInput] = useState("");
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return undefined;
+    }
+
+    let ignore = false;
+
+    async function loadTasks() {
+      try {
+        const res = await fetch("/api/tasks");
+        if (!res.ok || ignore) {
+          return;
+        }
+
+        const data = await res.json();
+        if (!ignore) {
+          setTasks(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error("Failed to fetch tasks from database", err);
+        }
+      }
+    }
+
+    loadTasks();
+
+    return () => {
+      ignore = true;
+    };
+  }, [status]);
+
+  const updateTaskInDb = async (taskId, updatedFields) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const savedTask = await res.json();
+        setTasks(prev => prev.map(t => t.id === taskId ? savedTask : t));
+        if (selectedDetailsTask && selectedDetailsTask.id === taskId) {
+          setSelectedDetailsTask(savedTask);
+        }
+        return savedTask;
+      }
+    } catch (err) {
+      console.error("Network error updating task in DB:", err);
+    }
+    return null;
+  };
 
   // Modal Form Inputs
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -236,12 +320,11 @@ export default function Home() {
   const [selectedDetailsTask, setSelectedDetailsTask] = useState(null);
   const [newUpdateText, setNewUpdateText] = useState("");
 
+  // Chatbot state
+  const [chatbotOpen, setChatbotOpen] = useState(false);
+
   // Hydrate theme and permissions
   useEffect(() => {
-    const savedMode = localStorage.getItem("ops_dashboard_dark");
-    if (savedMode === "true") {
-      setDarkMode(true);
-    }
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -256,7 +339,7 @@ export default function Home() {
     });
   };
 
-  const STATUSES = useMemo(() => getStatusesConfig(darkMode), [darkMode]);
+  const STATUSES = getStatusesConfig(darkMode);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -274,8 +357,6 @@ export default function Home() {
       }
     }
   };
-
-  const getTodayStr = () => new Date().toISOString().split("T")[0];
 
   const getFutureTimeStr = (minutesOffset = 60) => {
     const d = new Date();
@@ -323,7 +404,7 @@ export default function Home() {
     setTaskModalOpen(true);
   };
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     if (!taskTitleInput.trim()) {
       showToast("Please enter a task title.");
       return;
@@ -345,7 +426,6 @@ export default function Home() {
 
     if (taskModalMode === "create") {
       const newTask = {
-        id: "t_" + Date.now().toString(),
         title: taskTitleInput.trim(),
         description: taskDescInput.trim(),
         property: taskPropertyInput,
@@ -359,39 +439,74 @@ export default function Home() {
         reminderTriggered: false,
         updates: [],
       };
-      setTasks((prev) => [newTask, ...prev]);
-      showToast("New task created successfully!");
+
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newTask)
+        });
+        if (res.ok) {
+          const savedTask = await res.json();
+          setTasks((prev) => [savedTask, ...prev]);
+          showToast("New task created successfully!");
+        } else {
+          const errData = await res.json();
+          showToast(`Error: ${errData.error || 'Failed to save'}`);
+        }
+      } catch (err) {
+        showToast("Network error creating task.");
+      }
     } else {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id === taskModalId) {
-            return {
-              ...t,
-              title: taskTitleInput.trim(),
-              description: taskDescInput.trim(),
-              property: taskPropertyInput,
-              status: taskStatusInput,
-              responsible: taskResponsibleInput,
-              dueDate: taskDueDateInput,
-              lastUpdated: nowStr,
-              recurrence: finalRecurrence,
-            };
-          }
-          return t;
-        }),
-      );
-      showToast("Task updated successfully!");
+      const updatedFields = {
+        title: taskTitleInput.trim(),
+        description: taskDescInput.trim(),
+        property: taskPropertyInput,
+        status: taskStatusInput,
+        responsible: taskResponsibleInput,
+        dueDate: taskDueDateInput,
+        lastUpdated: nowStr,
+        recurrence: finalRecurrence
+      };
+
+      try {
+        const res = await fetch(`/api/tasks/${taskModalId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedFields)
+        });
+        if (res.ok) {
+          const savedTask = await res.json();
+          setTasks((prev) => prev.map((t) => t.id === taskModalId ? savedTask : t));
+          showToast("Task updated successfully!");
+        } else {
+          const errData = await res.json();
+          showToast(`Error: ${errData.error || 'Failed to update'}`);
+        }
+      } catch (err) {
+        showToast("Network error updating task.");
+      }
     }
     setTaskModalOpen(false);
   };
 
-  const handleDeleteTask = (taskId) => {
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    showToast("Task deleted.");
+  const handleDeleteTask = async (taskId) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+        showToast("Task deleted.");
+      } else {
+        const errData = await res.json();
+        showToast(`Error: ${errData.error || 'Failed to delete'}`);
+      }
+    } catch (err) {
+      showToast("Network error deleting task.");
+    }
   };
 
   const handleLogout = () => {
-    showToast("Logged out successfully! In-memory session cleared.");
+    signOut({ callbackUrl: '/login' });
   };
 
   const handleOpenReminderModal = (task) => {
@@ -400,75 +515,57 @@ export default function Home() {
     setSnoozeDurationInput(task.snoozeDuration || 10);
   };
 
-  const handleSaveReminderFromModal = () => {
+  const handleSaveReminderFromModal = async () => {
     if (!reminderTimeInput) {
       showToast("Please enter a valid date and time.");
       return;
     }
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === reminderModalTask.id) {
-          return {
-            ...t,
-            reminderActive: true,
-            reminderTime: reminderTimeInput,
-            snoozeDuration: snoozeDurationInput,
-            reminderTriggered: false,
-          };
-        }
-        return t;
-      }),
-    );
-    showToast(`Reminder scheduled for "${reminderModalTask.title}".`);
+    const updated = await updateTaskInDb(reminderModalTask.id, {
+      reminderActive: true,
+      reminderTime: reminderTimeInput,
+      snoozeDuration: snoozeDurationInput,
+      reminderTriggered: false,
+    });
+    if (updated) {
+      showToast(`Reminder scheduled for "${reminderModalTask.title}".`);
+    }
     setReminderModalTask(null);
   };
 
-  const handleRemoveReminderFromModal = () => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === reminderModalTask.id) {
-          return {
-            ...t,
-            reminderActive: false,
-            reminderTime: null,
-            reminderTriggered: false,
-          };
-        }
-        return t;
-      }),
-    );
-    showToast(`Reminders cleared for "${reminderModalTask.title}".`);
+  const handleRemoveReminderFromModal = async () => {
+    const updated = await updateTaskInDb(reminderModalTask.id, {
+      reminderActive: false,
+      reminderTime: null,
+      reminderTriggered: false,
+    });
+    if (updated) {
+      showToast(`Reminders cleared for "${reminderModalTask.title}".`);
+    }
     setReminderModalTask(null);
   };
 
-  const handleSnoozeReminder = (taskId) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const snoozeMinutes = t.snoozeDuration || 10;
-          const newTimeStr = getFutureTimeStr(snoozeMinutes);
-          showToast(`Reminder snoozed for ${snoozeMinutes}m.`);
-          return {
-            ...t,
-            reminderTime: newTimeStr,
-            reminderTriggered: false,
-          };
-        }
-        return t;
-      }),
-    );
+  const handleSnoozeReminder = async (taskId) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const snoozeMinutes = task.snoozeDuration || 10;
+    const newTimeStr = getFutureTimeStr(snoozeMinutes);
+    const updated = await updateTaskInDb(taskId, {
+      reminderTime: newTimeStr,
+      reminderTriggered: false,
+    });
+    if (updated) {
+      showToast(`Reminder snoozed for ${snoozeMinutes}m.`);
+    }
   };
 
-  const handleDismissReminder = (taskId) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          showToast("Reminder dismissed.");
-          return { ...t, reminderActive: false, reminderTriggered: false };
-        }
-        return t;
-      }),
-    );
+  const handleDismissReminder = async (taskId) => {
+    const updated = await updateTaskInDb(taskId, {
+      reminderActive: false,
+      reminderTriggered: false,
+    });
+    if (updated) {
+      showToast("Reminder dismissed.");
+    }
   };
 
   const triggerNotification = (task) => {
@@ -509,16 +606,14 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleUpdateRecurrence = (taskId, newRecurrence) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, recurrence: newRecurrence } : t,
-      ),
-    );
-    showToast("Recurrence updated.");
+  const handleUpdateRecurrence = async (taskId, newRecurrence) => {
+    const updated = await updateTaskInDb(taskId, { recurrence: newRecurrence });
+    if (updated) {
+      showToast("Recurrence updated.");
+    }
   };
 
-  const handleAddUpdate = () => {
+  const handleAddUpdate = async () => {
     if (!newUpdateText.trim()) return;
     const nowStr = new Date()
       .toLocaleString("en-GB", {
@@ -532,32 +627,23 @@ export default function Home() {
       .replace(",", " ·");
     const newUpdate = {
       id: "u_" + Date.now().toString(),
-      authorName: "Nipun Goel",
-      authorEmail: "nipun24.goel@gmail.com",
+      authorName: session?.user?.name || "Anonymous",
+      authorEmail: session?.user?.email || "anonymous@azzurrohotels.com",
       text: newUpdateText.trim(),
       timestamp: nowStr,
     };
 
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === selectedDetailsTask.id) {
-          const updatedUpdates = t.updates
-            ? [...t.updates, newUpdate]
-            : [newUpdate];
-          setSelectedDetailsTask((prevTask) => ({
-            ...prevTask,
-            updates: updatedUpdates,
-          }));
-          return { ...t, updates: updatedUpdates };
-        }
-        return t;
-      }),
-    );
-    setNewUpdateText("");
-    showToast("Update added!");
+    const currentUpdates = selectedDetailsTask.updates || [];
+    const updatedUpdates = [...currentUpdates, newUpdate];
+
+    const updated = await updateTaskInDb(selectedDetailsTask.id, { updates: updatedUpdates });
+    if (updated) {
+      setNewUpdateText("");
+      showToast("Update added!");
+    }
   };
 
-  const handleEditUpdate = (updateId, newText) => {
+  const handleEditUpdate = async (updateId, newText) => {
     if (!newText.trim()) return;
     const nowStr = new Date()
       .toLocaleString("en-GB", {
@@ -570,115 +656,26 @@ export default function Home() {
       })
       .replace(",", " ·");
 
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === selectedDetailsTask.id) {
-          const updatedUpdates = t.updates.map((up) => {
-            if (up.id === updateId) {
-              return {
-                ...up,
-                text: newText.trim(),
-                timestamp: nowStr,
-                authorName: "Nipun Goel",
-                authorEmail: "nipun24.goel@gmail.com",
-              };
-            }
-            return up;
-          });
-          setSelectedDetailsTask((prevTask) => ({
-            ...prevTask,
-            updates: updatedUpdates,
-          }));
-          return { ...t, updates: updatedUpdates };
-        }
-        return t;
-      }),
-    );
-    showToast("Update saved!");
-  };
-
-  const handleCompleteTask = (task) => {
-    const nowStr = new Date()
-      .toLocaleString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-      .replace(",", "");
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== task.id) return t;
-
-        if (t.recurrence === "daily") {
-          const nextDate = new Date();
-          nextDate.setDate(nextDate.getDate() + 1);
-          showToast(
-            `Task reset! Next due date: ${nextDate.toISOString().split("T")[0]}`,
-          );
-          return {
-            ...t,
-            status: "To do",
-            dueDate: nextDate.toISOString().split("T")[0],
-            lastUpdated: nowStr,
-            reminderActive: false,
-            reminderTriggered: false,
-          };
-        } else if (t.recurrence === "weekly") {
-          const nextDate = new Date();
-          nextDate.setDate(nextDate.getDate() + 7);
-          showToast(
-            `Task reset! Next due date: ${nextDate.toISOString().split("T")[0]}`,
-          );
-          return {
-            ...t,
-            status: "To do",
-            dueDate: nextDate.toISOString().split("T")[0],
-            lastUpdated: nowStr,
-            reminderActive: false,
-            reminderTriggered: false,
-          };
-        } else if (t.recurrence && t.recurrence.startsWith("custom:")) {
-          const parts = t.recurrence.split(":");
-          const count = parseInt(parts[1], 10) || 1;
-          const unit = parts[2] || "days";
-
-          const nextDate = new Date();
-          if (unit === "days") {
-            nextDate.setDate(nextDate.getDate() + count);
-          } else if (unit === "weeks") {
-            nextDate.setDate(nextDate.getDate() + count * 7);
-          } else if (unit === "months") {
-            nextDate.setMonth(nextDate.getMonth() + count);
-          }
-
-          showToast(
-            `Task reset! Next due date: ${nextDate.toISOString().split("T")[0]}`,
-          );
-          return {
-            ...t,
-            status: "To do",
-            dueDate: nextDate.toISOString().split("T")[0],
-            lastUpdated: nowStr,
-            reminderActive: false,
-            reminderTriggered: false,
-          };
-        }
-
-        showToast(`Task marked as Done.`);
+    const updatedUpdates = (selectedDetailsTask.updates || []).map((up) => {
+      if (up.id === updateId) {
         return {
-          ...t,
-          status: "Done",
-          lastUpdated: nowStr,
-          reminderActive: false,
-          reminderTriggered: false,
+          ...up,
+          text: newText.trim(),
+          timestamp: nowStr,
+          authorName: session?.user?.name || "Anonymous",
+          authorEmail: session?.user?.email || "anonymous@azzurrohotels.com",
         };
-      }),
-    );
+      }
+      return up;
+    });
+
+    const updated = await updateTaskInDb(selectedDetailsTask.id, { updates: updatedUpdates });
+    if (updated) {
+      showToast("Update saved!");
+    }
   };
 
-  const handleStatusChange = (taskId, newStatus) => {
+  const handleCompleteTask = async (task) => {
     const nowStr = new Date()
       .toLocaleString("en-GB", {
         day: "2-digit",
@@ -688,18 +685,90 @@ export default function Home() {
         minute: "2-digit",
       })
       .replace(",", "");
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          if (newStatus === "Done") {
-            // Trigger the standard completion engine
-            handleCompleteTask(t);
-          }
-          return { ...t, status: newStatus, lastUpdated: nowStr };
-        }
-        return t;
-      }),
-    );
+
+    let nextFields = {};
+    if (task.recurrence === "daily") {
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + 1);
+      nextFields = {
+        status: "To do",
+        dueDate: nextDate.toISOString().split("T")[0],
+        lastUpdated: nowStr,
+        reminderActive: false,
+        reminderTriggered: false,
+      };
+      showToast(
+        `Task reset! Next due date: ${nextFields.dueDate}`,
+      );
+    } else if (task.recurrence === "weekly") {
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + 7);
+      nextFields = {
+        status: "To do",
+        dueDate: nextDate.toISOString().split("T")[0],
+        lastUpdated: nowStr,
+        reminderActive: false,
+        reminderTriggered: false,
+      };
+      showToast(
+        `Task reset! Next due date: ${nextFields.dueDate}`,
+      );
+    } else if (task.recurrence && task.recurrence.startsWith("custom:")) {
+      const parts = task.recurrence.split(":");
+      const count = parseInt(parts[1], 10) || 1;
+      const unit = parts[2] || "days";
+
+      const nextDate = new Date();
+      if (unit === "days") {
+        nextDate.setDate(nextDate.getDate() + count);
+      } else if (unit === "weeks") {
+        nextDate.setDate(nextDate.getDate() + count * 7);
+      } else if (unit === "months") {
+        nextDate.setMonth(nextDate.getMonth() + count);
+      }
+
+      nextFields = {
+        status: "To do",
+        dueDate: nextDate.toISOString().split("T")[0],
+        lastUpdated: nowStr,
+        reminderActive: false,
+        reminderTriggered: false,
+      };
+      showToast(
+        `Task reset! Next due date: ${nextFields.dueDate}`,
+      );
+    } else {
+      nextFields = {
+        status: "Done",
+        lastUpdated: nowStr,
+        reminderActive: false,
+        reminderTriggered: false,
+      };
+      showToast(`Task marked as Done.`);
+    }
+
+    await updateTaskInDb(task.id, nextFields);
+  };
+
+  const handleStatusChange = async (taskId, newStatus) => {
+    const nowStr = new Date()
+      .toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      .replace(",", "");
+
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    if (newStatus === "Done") {
+      await handleCompleteTask(task);
+    } else {
+      await updateTaskInDb(taskId, { status: newStatus, lastUpdated: nowStr });
+    }
   };
 
   const handleCopyFollowUp = (task) => {
@@ -754,6 +823,63 @@ export default function Home() {
     });
 
     copyToClipboard(text, "Executive Tracker Report copied to clipboard!");
+  };
+
+  const handleAddEmptyRoom = () => {
+    const roomNumber = emptyRoomInput.trim();
+    if (!roomNumber) {
+      showToast("Please enter a room number.");
+      return;
+    }
+
+    if (filterProperty === "All") {
+      showToast("Choose a property before adding an empty room.");
+      return;
+    }
+
+    const duplicateExists = emptyRoomsData.some(
+      (room) =>
+        room.date === emptyRoomsDate &&
+        room.property === filterProperty &&
+        room.roomNumber.toLowerCase() === roomNumber.toLowerCase(),
+    );
+
+    if (duplicateExists) {
+      showToast("That room is already on today's checklist for this property.");
+      return;
+    }
+
+    setEmptyRoomsData((prev) => [
+      {
+        id:
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `empty-room-${Date.now()}`,
+        date: emptyRoomsDate,
+        property: filterProperty,
+        roomNumber,
+        ac: "Off",
+        pest: "Pending",
+        clean: "Pending",
+        light: "Off",
+      },
+      ...prev,
+    ]);
+    setEmptyRoomInput("");
+    showToast(`Room ${roomNumber} added to the checklist.`);
+  };
+
+  const handleToggleEmptyRoomStatus = (roomId, field, value) => {
+    setEmptyRoomsData((prev) =>
+      prev.map((room) =>
+        room.id === roomId ? { ...room, [field]: value } : room,
+      ),
+    );
+  };
+
+  const handleDeleteEmptyRoom = (roomId) => {
+    setEmptyRoomsData((prev) => prev.filter((room) => room.id !== roomId));
+    showToast("Empty room removed from checklist.");
   };
 
   const exportToWord = () => {
@@ -827,6 +953,25 @@ export default function Home() {
     return t.property === filterProperty;
   });
 
+  const filteredEmptyRooms = useMemo(() => {
+    return emptyRoomsData
+      .filter((room) => {
+        const matchesDate = room.date === emptyRoomsDate;
+        const matchesProperty =
+          filterProperty === "All" || room.property === filterProperty;
+        return matchesDate && matchesProperty;
+      })
+      .sort((a, b) =>
+        a.roomNumber.localeCompare(b.roomNumber, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+  }, [emptyRoomsData, emptyRoomsDate, filterProperty]);
+
+  const trackerProperties = PROPERTIES;
+  const showStandardFilters = activeView === "board" || activeView === "tracker-global";
+
   // Calculate live count totals for headers
   const pendingCount = useMemo(() => {
     const todayStr = getTodayStr();
@@ -841,6 +986,20 @@ export default function Home() {
   const completedCount = useMemo(() => {
     return tasks.filter((t) => t.status === "Done").length;
   }, [tasks]);
+
+  if (status === 'loading' || status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-[#181614] flex items-center justify-center select-none font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <svg className="animate-spin h-8 w-8 text-white" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span className="text-xs font-semibold tracking-widest text-[#a8a090] uppercase animate-pulse">Loading operations dashboard...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -872,16 +1031,44 @@ export default function Home() {
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
               {activeView === "board"
                 ? "Task Schedule"
-                : activeView === "rooms"
-                  ? "Property Overview"
-                  : "Location Checklists"}
+                : activeView === "tracker-empty-rooms"
+                  ? "Room Care Workflow"
+                  : activeView === "empty-rooms-live"
+                    ? "Cloudbeds Integration"
+                    : activeView === "schedule"
+                      ? "Cleaning & Maintenance"
+                      : activeView === "facilities"
+                        ? "Property Infrastructure"
+                        : activeView === "handoffs"
+                          ? "Shift Management"
+                          : activeView === "history"
+                            ? "Audit & Compliance"
+                            : "Location Checklists"}
             </span>
             <h2 className="text-3xl font-black font-serif-display leading-tight tracking-tight mt-1">
               {activeView === "board"
                 ? "Daily Operations"
-                : activeView === "rooms"
-                  ? "Rooms HUD"
-                  : "Trackers & Exports"}
+                : activeView === "tracker-empty-rooms"
+                  ? "Empty Rooms Checklist"
+                  : activeView === "empty-rooms-live"
+                    ? "Empty Rooms — Live"
+                    : activeView === "schedule"
+                      ? "Scheduled Activities"
+                      : activeView === "facilities"
+                        ? "Facility Inventory"
+                        : activeView === "property-inventory"
+                          ? "Property Overview"
+                          : activeView === "room-inventory"
+                            ? "Room Inventory"
+                            : activeView === "bathroom-inventory"
+                              ? "Bathroom Inventory"
+                              : activeView === "review-queue"
+                                ? "Review Queue"
+                                : activeView === "handoffs"
+                                  ? "Shift Handoffs"
+                                  : activeView === "history"
+                                    ? "Activity History"
+                                    : "Global Task Tracker"}
             </h2>
           </div>
 
@@ -917,32 +1104,34 @@ export default function Home() {
         </div>
 
         {/* Location selector filters bar */}
-        <div className="flex flex-col gap-4 flex-shrink-0">
-          <div className="flex flex-col gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Filter by Location
-            </span>
-            <div className="flex gap-2.5 overflow-x-auto pb-1 custom-scrollbar">
-              {PROPERTIES.map((prop) => (
-                <button
-                  key={prop}
-                  onClick={() => setFilterProperty(prop)}
-                  className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[13px] transition-all cursor-pointer ${
-                    filterProperty === prop
-                      ? darkMode
-                        ? "bg-slate-100 text-slate-900 shadow-sm font-semibold"
-                        : "bg-slate-900 text-white shadow-sm font-semibold"
-                      : darkMode
-                        ? "bg-slate-800/60 text-slate-300 hover:bg-slate-800 hover:text-white font-medium"
-                        : "bg-slate-100/80 text-slate-650 hover:bg-slate-200/80 hover:text-slate-900 font-medium"
-                  }`}
-                >
-                  {prop}
-                </button>
-              ))}
+        {showStandardFilters && (
+          <div className="flex flex-col gap-4 flex-shrink-0">
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Filter by Location
+              </span>
+              <div className="flex gap-2.5 overflow-x-auto pb-1 custom-scrollbar">
+                {PROPERTIES.map((prop) => (
+                  <button
+                    key={prop}
+                    onClick={() => setFilterProperty(prop)}
+                    className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[13px] transition-all cursor-pointer ${
+                      filterProperty === prop
+                        ? darkMode
+                          ? "bg-slate-100 text-slate-900 shadow-sm font-semibold"
+                          : "bg-slate-900 text-white shadow-sm font-semibold"
+                        : darkMode
+                          ? "bg-slate-800/60 text-slate-300 hover:bg-slate-800 hover:text-white font-medium"
+                          : "bg-slate-100/80 text-slate-650 hover:bg-slate-200/80 hover:text-slate-900 font-medium"
+                    }`}
+                  >
+                    {prop}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Dynamic Inner View Content */}
         <div className="flex-1 min-h-0">
@@ -961,6 +1150,39 @@ export default function Home() {
                 handleStatusChange={handleStatusChange}
               />
             </div>
+          ) : activeView === "tracker-empty-rooms" ? (
+            <EmptyRoomsChecklist
+              darkMode={darkMode}
+              properties={trackerProperties}
+              filterProperty={filterProperty}
+              setFilterProperty={setFilterProperty}
+              checklistDate={emptyRoomsDate}
+              setChecklistDate={setEmptyRoomsDate}
+              emptyRoomInput={emptyRoomInput}
+              setEmptyRoomInput={setEmptyRoomInput}
+              emptyRooms={filteredEmptyRooms}
+              onAddRoom={handleAddEmptyRoom}
+              onToggleStatus={handleToggleEmptyRoomStatus}
+              onDeleteRoom={handleDeleteEmptyRoom}
+            />
+          ) : activeView === "empty-rooms-live" ? (
+            <EmptyRoomsLive darkMode={darkMode} />
+          ) : activeView === "schedule" ? (
+            <ScheduleView darkMode={darkMode} />
+          ) : activeView === "facilities" ? (
+            <FacilityManager darkMode={darkMode} />
+          ) : activeView === "handoffs" ? (
+            <ShiftHandoffPanel darkMode={darkMode} />
+          ) : activeView === "history" ? (
+            <ActivityHistory darkMode={darkMode} />
+          ) : activeView === "property-inventory" ? (
+            <PropertyInventory darkMode={darkMode} />
+          ) : activeView === "room-inventory" ? (
+            <RoomInventory darkMode={darkMode} />
+          ) : activeView === "bathroom-inventory" ? (
+            <BathroomInventory darkMode={darkMode} />
+          ) : activeView === "review-queue" ? (
+            <ReviewQueue darkMode={darkMode} />
           ) : (
             <TrackerSheet
               tasks={tasks}
@@ -991,6 +1213,19 @@ export default function Home() {
         openCreateTaskModal={openCreateTaskModal}
         copyTrackerData={copyTrackerData}
       />
+
+      {/* Chatbot Toggle Button */}
+      <button
+        onClick={() => setChatbotOpen(!chatbotOpen)}
+        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-2xl shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 ${darkMode ? 'bg-indigo-600 text-white hover:bg-indigo-500 hover:shadow-indigo-500/25' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:shadow-indigo-300/25'}`}
+        title="Operations Assistant"
+      >
+        <span className="material-symbols-outlined select-none text-[26px] leading-none">smart_toy</span>
+      </button>
+
+      {chatbotOpen && (
+        <ChatbotPanel darkMode={darkMode} onClose={() => setChatbotOpen(false)} />
+      )}
 
       {/* Task Details & Updates Modal */}
       <TaskDetailsModal

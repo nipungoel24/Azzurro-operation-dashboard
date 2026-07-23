@@ -86,6 +86,13 @@ export const Icons = {
       chevron_right
     </span>
   ),
+  ChevronDown: ({ className = "" }) => (
+    <span
+      className={`material-symbols-outlined select-none text-[20px] leading-none ${className}`}
+    >
+      expand_more
+    </span>
+  ),
   Trash: ({ className = "" }) => (
     <span
       className={`material-symbols-outlined select-none text-[18px] leading-none ${className}`}

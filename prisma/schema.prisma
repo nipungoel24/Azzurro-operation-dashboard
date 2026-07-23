@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// User Table for Login
+model User {
+  id       String  @id @default(cuid())
+  email    String  @unique
+  password String  // Hashed password
+  name     String
+  role     String  @default("viewer")
+}
+
+// Generic Tasks Table (existing — kept for backward compatibility)
+model Task {
+  id                String   @id @default(cuid())
+  title             String
+  description       String?
+  status            String   @default("To do")
+  property          String
+  responsible       String
+  dueDate           String?
+  lastUpdated       String?
+  recurrence        String?  @default("none")
+  reminderActive    Boolean  @default(false)
+  reminderTime      String?
+  snoozeDuration    Int      @default(10)
+  reminderTriggered Boolean  @default(false)
+  updates           Json?
+  created_by_email  String
+  updated_by_email  String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// Enhanced Audit Log Table
+model AuditLog {
+  id               String   @id @default(cuid())
+  entityType       String   @default("task")
+  entityId         String
+  action           String
+  changedByEmail   String
+  changedByName    String?
+  actorRole        String?
+  source           String   @default("ui")
+  summary          String?
+  reason           String?
+  oldData          Json?
+  newData          Json?
+  correlationId    String?
+  batchId          String?
+  revertedAuditId  String?
+  task_id          String?
+  task_title       String?
+  action_type      String?
+  changed_by_email String?
+  old_data         Json?
+  new_data         Json?
+  timestamp        DateTime @default(now())
+  createdAt        DateTime @default(now())
+}
+
+// Property model
+model Property {
+  id                    String   @id @default(cuid())
+  name                  String
+  code                  String?
+  aliases               String?  // JSON array of aliases
+  address               String?
+  closestStations       String?  // JSON array
+  timezone              String   @default("Australia/Sydney")
+  cloudbedsPropertyId   String?
+  cloudbedsApiKey       String?
+  capacity              Int      @default(0)
+  declaredBeds          Int?
+  declaredRooms         Int?
+  declaredBathrooms     Int?
+  declaredPrivateBathrooms Int?
+  declaredSharedBathrooms  Int?
+  verificationStatus    String   @default("needs_verification")
+  active                Boolean  @default(true)
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Room model
+model Room {
+  id                   String   @id @default(cuid())
+  propertyId           String
+  propertyCode         String?
+  cloudbedsRoomId      String?
+  roomNumber           String
+  normalizedRoomKey    String?  // e.g. CENTRAL_SYDNEY:ROOM_101
+  building             String?
+  floor                String?
+  bedCount             Int?
+  bedDescription       String?
+  roomType             String?
+  roomSize             String?
+  bathroomArrangement  String?  // ensuite, detached_private, shared, owner_occupied
+  assignedBathroomId   String?
+  isEnsuite            Boolean  @default(false)
+  isDetachedPrivate    Boolean  @default(false)
+  hasSharedBathroom    Boolean  @default(false)
+  ownerOccupied        Boolean  @default(false)
+  cleaningRequired     Boolean  @default(true)
+  fridge               Boolean  @default(false)
+  airConditioning      String?
+  storage              String?
+  rcdBedsidePlugs      Boolean?
+  roomSetup            String?
+  operationalNotes     String?
+  verificationStatus   String   @default("imported_unverified")
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// Facility model (includes bathrooms)
+model Facility {
+  id                    String   @id @default(cuid())
+  propertyId            String
+  propertyCode          String?
+  roomId                String?
+  assignedRoomId        String?
+  type                  String   // bathroom, kitchen, etc.
+  name                  String
+  bathroomType          String?  // ensuite, detached_private, shared_full_bathroom, shared_toilet, shared_shower, combined_shower_toilet, multi_fixture, owner_occupied, unknown
+  building              String?
+  floor                 String?
+  floorOrArea           String?
+  locationDescription   String?
+  isShared              Boolean  @default(false)
+  isPrivate             Boolean  @default(false)
+  isEnsuite             Boolean  @default(false)
+  showerCount           Int?
+  toiletCount           Int?
+  cleaningRequired      Boolean  @default(true)
+  ownerOccupied         Boolean  @default(false)
+  active                Boolean  @default(true)
+  verificationStatus    String   @default("needs_verification")
+  lastDeepCleanedAt     DateTime?
+  lastVentCleanedAt     DateTime?
+  cleaningRequirements  String?
+  defaultTaskFrequency  String?
+  maintenanceNotes      String?
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Scheduled Tasks model
+model ScheduledTask {
+  id                  String   @id @default(cuid())
+  propertyId          String?
+  propertyName        String?
+  facilityId          String?
+  roomId              String?
+  templateId          String?
+  category            String?
+  title               String
+  description         String?
+  instructions        String?
+  scheduledStart      String?
+  scheduledEnd        String?
+  shift               String?
+  assigneeId          String?
+  assigneeName        String?
+  assignedRole        String?
+  priority            String   @default("medium")
+  status              String   @default("scheduled")
+  recurrenceReference  String?
+  generatedSource     String?
+  incompleteReason    String?
+  completionNotes     String?
+  completedAt         DateTime?
+  createdBy           String?
+  createdByName       String?
+  updatedBy           String?
+  updatedByName       String?
+  handoffNotes        String?
+  parentTaskId        String?
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// Empty Room Snapshot model
+model EmptyRoomSnapshot {
+  id                String   @id @default(cuid())
+  propertyId        String
+  propertyName      String
+  externalRoomId    String?
+  roomNumber        String
+  roomName          String?
+  roomType          String?
+  occupancyStatus   String?
+  cleaningStatus    String?
+  lastDeparture     DateTime?
+  nextArrival       DateTime?
+  deepCleanRequired Boolean  @default(false)
+  pestSprayRequired Boolean  @default(false)
+  existingTaskId    String?
+  syncRunId         String?
+  dataSource        String   @default("cloudbeds")
+  syncWarning       String?
+  syncedAt          DateTime @default(now())
+  createdAt         DateTime @default(now())
+}
+
+// Shift Handoff model
+model ShiftHandoff {
+  id              String   @id @default(cuid())
+  propertyId      String?
+  propertyName    String?
+  shiftFrom       String?
+  shiftTo         String?
+  preparedBy      String?
+  preparedByName  String?
+  notes           String?
+  acknowledged    Boolean  @default(false)
+  acknowledgedBy  String?
+  acknowledgedAt  DateTime?
+  taskIds         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Cloudbeds Sync Run model
+model CloudbedsSyncRun {
+  id              String   @id @default(cuid())
+  propertyId      String?
+  propertyName    String?
+  status          String   @default("running")
+  roomsFound      Int      @default(0)
+  roomsUpdated    Int      @default(0)
+  errors          String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+}
+
+// Chat Conversation model
+model ChatConversation {
+  id        String    @id @default(cuid())
+  userId    String?
+  userEmail String?
+  messages  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
