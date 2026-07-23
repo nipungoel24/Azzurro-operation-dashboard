@@ -20,21 +20,38 @@ const CATEGORIES = [
 
 const PROPERTIES = ['Potts Point', 'Surry Hills', 'Darling Harbour', 'Central Sydney', 'The Pyrmont Budget Hotel', 'Olympic Hotel'];
 const SHIFTS = ['morning', 'afternoon', 'night', 'overnight'];
+const RECUR_TYPES = [
+  { value: 'none', label: 'One-time' },
+  { value: 'daily', label: 'Every day' },
+  { value: 'weekly', label: 'Every week' },
+  { value: 'biweekly', label: 'Every 2 weeks' },
+  { value: 'monthly', label: 'Every month' },
+  { value: 'custom', label: 'Custom...' },
+];
 
 export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
-  const [form, setForm] = useState({
+  const emptyForm = () => ({
     title: '', category: 'general_cleaning', propertyName: '', scheduledStart: new Date().toISOString().split('T')[0],
     shift: 'morning', assigneeName: '', assignedRole: 'cleaner', priority: 'medium', description: '',
+    recurrenceType: 'none', customInterval: 3, customUnit: 'days',
   });
 
+  const [form, setForm] = useState(emptyForm());
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.propertyName) return;
-    onSave(form);
-    setForm({ title: '', category: 'general_cleaning', propertyName: '', scheduledStart: new Date().toISOString().split('T')[0],
-      shift: 'morning', assigneeName: '', assignedRole: 'cleaner', priority: 'medium', description: '' });
+
+    let recurrenceReference = null;
+    if (form.recurrenceType === 'daily') recurrenceReference = 'daily:1:days';
+    else if (form.recurrenceType === 'weekly') recurrenceReference = 'weekly:1:weeks';
+    else if (form.recurrenceType === 'biweekly') recurrenceReference = 'weekly:2:weeks';
+    else if (form.recurrenceType === 'monthly') recurrenceReference = 'monthly:1:months';
+    else if (form.recurrenceType === 'custom') recurrenceReference = `custom:${form.customInterval}:${form.customUnit}`;
+
+    onSave({ ...form, recurrenceReference });
+    setForm(emptyForm());
   };
 
   if (!open) return null;
@@ -52,20 +69,19 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5 col-span-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Task Title</label>
-              <input type="text" value={form.title} onChange={e => set('title', e.target.value)} placeholder="What needs to be done?" className={input} required />
-            </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Task Title</label>
+            <input type="text" value={form.title} onChange={e => set('title', e.target.value)} placeholder="What needs to be done?" className={input} required />
+          </div>
 
+          <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</label>
               <select value={form.category} onChange={e => set('category', e.target.value)} className={selectCls}>
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
-
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Priority</label>
               <select value={form.priority} onChange={e => set('priority', e.target.value)} className={selectCls}>
@@ -83,7 +99,6 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
                 {PROPERTIES.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</label>
               <input type="date" value={form.scheduledStart} onChange={e => set('scheduledStart', e.target.value)} className={input} />
@@ -95,7 +110,6 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
                 {SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assignee</label>
               <input type="text" value={form.assigneeName} onChange={e => set('assigneeName', e.target.value)} placeholder="Staff name" className={input} />
@@ -114,12 +128,41 @@ export default function TaskAssignModal({ open, onClose, onSave, darkMode }) {
             </div>
           </div>
 
+          {/* Recurrence */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recurrence</label>
+            <select value={form.recurrenceType} onChange={e => set('recurrenceType', e.target.value)} className={selectCls}>
+              {RECUR_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+
+          {form.recurrenceType === 'custom' && (
+            <div className={`grid grid-cols-2 gap-3 p-3 rounded-xl border ${darkMode ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-slate-50 border-slate-100'}`}>
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Repeat every</label>
+                <input
+                  type="number" min="1" value={form.customInterval}
+                  onChange={e => set('customInterval', Math.max(1, parseInt(e.target.value) || 1))}
+                  className={input}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Unit</label>
+                <select value={form.customUnit} onChange={e => set('customUnit', e.target.value)} className={selectCls}>
+                  <option value="days">Days</option>
+                  <option value="weeks">Weeks</option>
+                  <option value="months">Months</option>
+                </select>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Notes</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2} placeholder="Any special instructions..." className={`${input} resize-none`} />
           </div>
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${darkMode ? 'border-white/[0.08] text-slate-400 hover:bg-white/[0.04]' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
               Cancel
             </button>

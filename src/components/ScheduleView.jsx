@@ -306,6 +306,7 @@ export default function ScheduleView({ darkMode }) {
                       {task.scheduledStart && <span>{task.scheduledStart}</span>}
                       {task.shift && <span>Shift: {task.shift}</span>}
                       {task.category && <span className="uppercase opacity-60">{task.category.replace(/_/g, ' ')}</span>}
+                      {task.recurrenceReference && <span className="text-violet-400">{formatRecurrence(task.recurrenceReference)}</span>}
                       {task.parentTaskId && <span className="text-amber-400">Follow-up</span>}
                     </div>
                     {task.incompleteReason && <p className="text-xs text-rose-400 mt-1">Reason: {task.incompleteReason}</p>}
@@ -339,4 +340,19 @@ export default function ScheduleView({ darkMode }) {
       <TaskAssignModal open={assignModal} onClose={() => setAssignModal(false)} onSave={handleAssign} darkMode={darkMode} />
     </div>
   );
+}
+
+function formatRecurrence(ref) {
+  if (!ref) return null;
+  if (ref === 'none') return 'Once';
+  const parts = ref.split(':');
+  const type = parts[0];
+  const count = parseInt(parts[1]) || 1;
+  const unit = parts[2] || 'days';
+  if (type === 'daily') return count === 1 ? 'Daily' : `Every ${count} days`;
+  if (type === 'weekly') return count === 1 ? 'Weekly' : `Every ${count} weeks`;
+  if (type === 'biweekly') return 'Every 2 weeks';
+  if (type === 'monthly') return count === 1 ? 'Monthly' : `Every ${count} months`;
+  if (type === 'custom') return `Every ${count} ${unit}`;
+  return 'Recurring';
 }
