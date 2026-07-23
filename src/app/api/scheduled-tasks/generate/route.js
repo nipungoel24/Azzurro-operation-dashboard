@@ -4,6 +4,34 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 import { generateDailyAutomatedTasks, generateBathroomDeepCleanTasks, generateVentCleaningTasks } from '@/services/scheduling';
 import { prisma } from '@/lib/prisma';
 
+async function generateForAll(user, dateStr, mode) {
+  const properties = await prisma.property.findMany({ where: { active: true } });
+  const results = [];
+  for (const prop of properties) {
+    if (mode === 'all' || mode === 'bathroom_deep_clean') {
+      try {
+        const bathTasks = await generateBathroomDeepCleanTasks(user, { propertyCode: prop.code, dateStr, bathroomsPerCleaner: 1 });
+        results.push({ property: prop.name, type: 'bathroom_deep_clean', count: bathTasks.length });
+      } catch (e) { results.push({ property: prop.name, type: 'bathroom_deep_clean', count: 0, error: e.message }); }
+    }
+    if (mode === 'all' || mode === 'vent_cleaning') {
+      try {
+        const dayOfWeek = (dateStr ? new Date(dateStr) : new Date()).getDay();
+        if (mode === 'all' && dayOfWeek !== 1 && dayOfWeek !== 4) continue;
+        const ventTasks = await generateVentCleaningTasks(user, { propertyCode: prop.code, bathroomsPerSession: 4 });
+        results.push({ property: prop.name, type: 'vent_cleaning', count: ventTasks.length });
+      } catch (e) { results.push({ property: prop.name, type: 'vent_cleaning', count: 0, error: e.message }); }
+    }
+    if (mode === 'all' || mode === 'daily') {
+      try {
+        const dailyTasks = await generateDailyAutomatedTasks(user, prop.code);
+        results.push({ property: prop.name, type: 'daily', count: dailyTasks.length });
+      } catch (e) { results.push({ property: prop.name, type: 'daily', count: 0, error: e.message }); }
+    }
+  }
+  return results;
+}
+
 export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,33 +45,25 @@ export async function POST(request) {
 
     let results = [];
 
-    if (mode === 'bathroom_deep_clean' && propertyCode) {
-      const tasks = await generateBathroomDeepCleanTasks(user, { propertyCode, dateStr });
-      results.push({ type: 'bathroom_deep_clean', count: tasks.length, tasks });
-    } else if (mode === 'vent_cleaning' && propertyCode) {
-      const tasks = await generateVentCleaningTasks(user, { propertyCode, bathroomsPerSession: 4 });
-      results.push({ type: 'vent_cleaning', count: tasks.length, tasks });
-    } else if (mode === 'daily' && propertyCode) {
-      const tasks = await generateDailyAutomatedTasks(user, propertyCode);
-      results.push({ type: 'daily', count: tasks.length, tasks });
-    } else if (mode === 'all') {
-      const properties = await prisma.property.findMany({ where: { active: true } });
-      for (const prop of properties) {
-        const bathTasks = await generateBathroomDeepCleanTasks(user, { propertyCode: prop.code, dateStr, bathroomsPerCleaner: 1 });
-        results.push({ property: prop.name, type: 'bathroom_deep_clean', count: bathTasks.length, tasks: bathTasks });
-
-        const today = dateStr ? new Date(dateStr) : new Date();
-        const dayOfWeek = today.getDay();
-        if (dayOfWeek === 1 || dayOfWeek === 4) {
-          const ventTasks = await generateVentCleaningTasks(user, { propertyCode: prop.code, bathroomsPerSession: 4 });
-          results.push({ property: prop.name, type: 'vent_cleaning', count: ventTasks.length, tasks: ventTasks });
-        }
-
-        const dailyTasks = await generateDailyAutomatedTasks(user, prop.code);
-        results.push({ property: prop.name, type: 'daily', count: dailyTasks.length, tasks: dailyTasks });
+    if (propertyCode) {
+      if (mode === 'bathroom_deep_clean' || mode === 'all') {
+        const tasks = await generateBathroomDeepCleanTasks(user, { propertyCode, dateStr, bathroomsPerCleaner: 1 });
+        results.push({ type: 'bathroom_deep_clean', count: tasks.length });
+      }
+      if (mode === 'vent_cleaning' || mode === 'all') {
+        const tasks = await generateVentCleaningTasks(user, { propertyCode, bathroomsPerSession: 4 });
+        results.push({ type: 'vent_cleaning', count: tasks.length });
+      }
+      if (mode === 'daily' || mode === 'all') {
+        const tasks = await generateDailyAutomatedTasks(user, propertyCode);
+        results.push({ type: 'daily', count: tasks.length });
       }
     } else {
-      return NextResponse.json({ error: `Unknown mode: ${mode}` }, { status: 400 });
+      results = await generateForAll(user, dateStr, mode);
+    }
+
+    if (results.length === 0) {
+      results.push({ type: mode, count: 0, note: 'No facilities or properties found for this mode' });
     }
 
     const totalTasks = results.reduce((sum, r) => sum + (r.count || 0), 0);
