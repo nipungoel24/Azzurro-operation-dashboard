@@ -1,9 +1,20 @@
 const { PrismaClient } = require('@prisma/client');
-const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
 const bcrypt = require('bcrypt');
 
-const adapter = new PrismaBetterSqlite3({ url: 'file:./dev.db' });
-const prisma = new PrismaClient({ adapter });
+const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
+const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
+
+let prisma;
+
+if (isPostgres) {
+  const pg = require('pg');
+  const { PrismaPg } = require('@prisma/adapter-pg');
+  const pool = new pg.Pool({ connectionString: dbUrl });
+  prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+} else {
+  const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
+  prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbUrl }) });
+}
 
 const DEFAULT_PROPERTIES = [
   { name: 'Potts Point', code: 'POTTS', cloudbedsPropertyId: '311272', capacity: 107, declaredRooms: 27, declaredBeds: 107, declaredBathrooms: 5, timezone: 'Australia/Sydney', verificationStatus: 'needs_verification', notes: '5 bathrooms declared. 6 facilities listed — needs review.' },
