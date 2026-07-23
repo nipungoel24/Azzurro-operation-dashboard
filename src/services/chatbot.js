@@ -331,28 +331,36 @@ async function callDeepSeek(message, context) {
 
   const data = await response.json();
 
-  // DeepSeek sometimes returns 200 with an error object
+  console.log('[Chatbot] DeepSeek response status:', response.status, 'has error:', !!data.error, 'has choices:', !!data.choices);
+
   if (data.error) {
     const errMsg = data.error?.message || data.error?.code || JSON.stringify(data.error);
+    console.log('[Chatbot] DeepSeek error detail:', errMsg);
     if (/image|unsupported.*media|not.*support/i.test(errMsg)) {
-      throw new Error('This model only supports text. Please describe your request without referencing image files.');
+      return { action: 'respond', message: 'This model only supports text. Please describe your request without referencing image files.' };
     }
     throw new Error(`DeepSeek API error: ${errMsg}`);
   }
 
   const content = data.choices?.[0]?.message?.content || '';
 
-  if (/cannot read.*\.(png|jpe?g|gif|svg|webp)/i.test(content) || /not support image/i.test(content)) {
+  console.log('[Chatbot] DeepSeek content preview:', content.slice(0, 200));
+
+  if (/cannot read.*(\.png|\.jpg|\.jpeg|\.gif|\.svg|image)/i.test(content)) {
     return { action: 'respond', message: 'This model only supports text. Please describe your request without referencing image files.' };
   }
 
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (parsed.params?.message && /cannot read.*image/i.test(parsed.params.message)) {
-      return { action: 'respond', message: 'This model only supports text. Please describe your request without referencing image files.' };
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.params?.message && /cannot read.*image/i.test(parsed.params.message)) {
+        return { action: 'respond', message: 'This model only supports text. Please describe your request without referencing image files.' };
+      }
+      return parsed;
+    } catch {
+      // If JSON parsing fails, fall through to plain text response
     }
-    return parsed;
   }
 
   return { action: 'respond', message: content };
