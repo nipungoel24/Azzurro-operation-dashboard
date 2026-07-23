@@ -1,11 +1,6 @@
 {
-  "buildCommand": "npx prisma db push --schema=prisma/schema.prisma --url file:/tmp/dev.db --accept-data-loss && npx prisma generate && next build",
-  "installCommand": "npm install",
   "framework": "nextjs",
-  "outputDirectory": ".next",
-  "env": {
-    "DATABASE_URL": "file:/tmp/dev.db",
-    "NEXTAUTH_SECRET": "azzurro_dashboard_secret_key_v1",
-    "NEXTAUTH_URL": "https://azzurro-operation-dashboard.vercel.app"
-  }
+  "buildCommand": "npx prisma generate && next build",
+  "installCommand": "npm install",
+  "outputDirectory": ".next"
 }
