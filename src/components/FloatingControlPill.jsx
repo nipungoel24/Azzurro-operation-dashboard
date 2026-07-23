@@ -7,117 +7,87 @@ export default function FloatingControlPill({
   darkMode,
   toggleDarkMode,
   openCreateTaskModal,
-  copyTrackerData,
   onGenerateBathrooms,
   onGenerateVents,
   onGenerateDaily,
   onSyncEmptyRooms,
-  onAddFacility,
-  onAddHandoff,
-  onSyncScheduled,
   generatingState,
 }) {
-  const btn = (active) => `flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${active ? (darkMode ? 'text-white bg-white/15' : 'text-slate-900 bg-slate-900/10') : (darkMode ? 'text-slate-400 hover:text-slate-200 hover:bg-white/5' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5')}`;
+  const btn = `flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${darkMode ? 'text-slate-400 hover:text-slate-200 hover:bg-white/5' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5'}`;
 
-  const iconBtn = (active) => `w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer border ${active ? (darkMode ? 'bg-white/15 text-white border-white/10' : 'bg-slate-900/10 text-slate-900 border-slate-900/10') : (darkMode ? 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-white/5' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5 border-slate-200')}`;
+  const themeBtn = `flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${darkMode ? 'text-amber-400 hover:bg-white/5' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5'}`;
 
-  const renderActions = () => {
-    const actions = [];
+  const actionBtn = (disabled) =>
+    `w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer border ${disabled ? (darkMode ? 'text-slate-600 border-white/5 cursor-not-allowed opacity-50' : 'text-slate-300 border-slate-200 cursor-not-allowed opacity-50') : (darkMode ? 'text-slate-300 hover:text-white hover:bg-white/10 border-white/10' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-900/5 border-slate-200')}`;
 
-    // View toggle
-    const boardViews = ['board', 'tracker-global', 'tracker-empty-rooms'];
-    const isBoard = boardViews.includes(activeView);
-    actions.push(
-      <button key="toggle" onClick={() => setActiveView(isBoard ? 'schedule' : 'board')} className={btn(isBoard)} title={isBoard ? 'Switch to Schedule' : 'Switch to Board'}>
-        {isBoard ? <NavIcon name="calendar_month" /> : <Icons.Board />}
-      </button>
-    );
-
-    // Dark mode
-    actions.push(
-      <button key="theme" onClick={toggleDarkMode} className={`flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${darkMode ? 'text-amber-400 hover:bg-white/5' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5'}`} title="Toggle theme">
-        {darkMode ? <Icons.Sun /> : <Icons.Moon />}
-      </button>
-    );
-
-    actions.push(<div key="sep1" className={`h-5 w-px ${darkMode ? 'bg-white/10' : 'bg-slate-900/10'}`} />);
-
-    // Context-specific primary action
-    switch (activeView) {
-      case 'schedule':
-        actions.push(
-          <button key="gen-bath" onClick={onGenerateBathrooms} disabled={!!generatingState} title="Generate bathroom deep clean tasks" className={iconBtn(!!generatingState)}>
-            <NavIcon name="shower" />
-          </button>
-        );
-        actions.push(
-          <button key="gen-vent" onClick={onGenerateVents} disabled={!!generatingState} title="Generate vent cleaning tasks" className={iconBtn(!!generatingState)}>
-            <NavIcon name="air" />
-          </button>
-        );
-        actions.push(
-          <button key="gen-daily" onClick={onGenerateDaily} disabled={!!generatingState} title="Generate daily tasks" className={iconBtn(!!generatingState)}>
-            <NavIcon name="cleaning_services" />
-          </button>
-        );
-        break;
-      case 'empty-rooms-live':
-        actions.push(
-          <button key="sync" onClick={onSyncEmptyRooms} disabled={!!generatingState} title="Sync with Cloudbeds" className={iconBtn(!!generatingState)}>
-            <NavIcon name="sync" />
-          </button>
-        );
-        break;
-      case 'facilities':
-      case 'property-inventory':
-      case 'room-inventory':
-      case 'bathroom-inventory':
-        actions.push(
-          <button key="add-fac" onClick={onAddFacility} title="Add facility" className={iconBtn(false)}>
-            <NavIcon name="add" />
-          </button>
-        );
-        break;
-      case 'handoffs':
-        actions.push(
-          <button key="add-handoff" onClick={onAddHandoff} title="New handoff" className={iconBtn(false)}>
-            <NavIcon name="swap_horiz" />
-          </button>
-        );
-        break;
-      default:
-        // Board / tracker views
-        actions.push(
-          <button key="new-task" onClick={openCreateTaskModal} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md hover:scale-105 active:scale-95 cursor-pointer border ${darkMode ? 'bg-slate-100 text-slate-900 hover:bg-slate-200 border-white/20' : 'bg-slate-900 text-white hover:bg-slate-800 border-transparent'}`} title="New task">
-            <Icons.Plus />
-          </button>
-        );
-    }
-
-    // Copy report (only on tracker views)
-    if (activeView === 'tracker-global') {
-      actions.push(
-        <button key="copy" onClick={copyTrackerData} className={btn(false)} title="Copy report">
-          <Icons.Copy />
-        </button>
-      );
-    }
-
-    return actions;
+  const views = {
+    schedule: [
+      { key: 'bath', icon: 'shower', label: 'Generate bathrooms', onClick: () => onGenerateBathrooms?.('bathroom_deep_clean'), disabled: !!generatingState },
+      { key: 'vent', icon: 'air', label: 'Generate vents', onClick: () => onGenerateVents?.('vent_cleaning'), disabled: !!generatingState },
+      { key: 'daily', icon: 'cleaning_services', label: 'Generate daily', onClick: () => onGenerateDaily?.('daily'), disabled: !!generatingState },
+    ],
+    'empty-rooms-live': [
+      { key: 'sync', icon: 'sync', label: 'Sync Cloudbeds', onClick: onSyncEmptyRooms, disabled: !!generatingState },
+    ],
+    facilities: [
+      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
+    ],
+    'property-inventory': [
+      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
+    ],
+    'room-inventory': [
+      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
+    ],
+    'bathroom-inventory': [
+      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
+    ],
+    handoffs: [
+      { key: 'handoff', icon: 'swap_horiz', label: 'New handoff', onClick: () => setActiveView('handoffs') },
+    ],
+    default: [
+      { key: 'task', icon: 'add', label: 'New task', onClick: openCreateTaskModal, primary: true },
+    ],
   };
 
+  const actions = views[activeView] || views.default;
+
   return (
-    <div 
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 shadow-lg rounded-full px-5 py-2.5 flex items-center gap-3 transition-all hover:shadow-xl"
+    <div
+      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 shadow-lg rounded-full flex items-center gap-2 px-4 py-2.5"
       style={{
         background: darkMode ? 'rgba(15, 17, 21, 0.35)' : 'rgba(255, 255, 255, 0.35)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         borderColor: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.10)',
         borderWidth: '1.5px',
+        minWidth: '160px',
       }}
     >
-      {renderActions()}
+      <button onClick={() => setActiveView(activeView === 'schedule' ? 'board' : 'schedule')} className={btn} title="Toggle view">
+        {activeView === 'schedule' ? <Icons.Board /> : <NavIcon name="calendar_month" />}
+      </button>
+
+      <button onClick={toggleDarkMode} className={themeBtn} title="Toggle theme">
+        {darkMode ? <Icons.Sun /> : <Icons.Moon />}
+      </button>
+
+      <div className={`h-5 w-px ${darkMode ? 'bg-white/10' : 'bg-slate-900/10'}`} />
+
+      <div className="flex items-center gap-2">
+        {actions.map(a => (
+          <button
+            key={a.key}
+            onClick={a.onClick}
+            disabled={a.disabled}
+            title={a.label}
+            className={a.primary
+              ? `w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-md hover:scale-105 active:scale-95 cursor-pointer border ${darkMode ? 'bg-slate-100 text-slate-900 hover:bg-slate-200 border-white/20' : 'bg-slate-900 text-white hover:bg-slate-800 border-transparent'}`
+              : actionBtn(a.disabled)}
+          >
+            {a.primary ? <Icons.Plus /> : <NavIcon name={a.icon} />}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
