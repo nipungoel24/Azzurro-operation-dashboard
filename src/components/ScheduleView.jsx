@@ -180,14 +180,17 @@ export default function ScheduleView({ darkMode }) {
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Daily and weekly cleaning and maintenance schedule.</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => handleGenerate('bathroom_deep_clean')} disabled={!!generating} className="rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-500 hover:bg-emerald-500/20 disabled:opacity-50 border border-emerald-500/20">
-              {generating === 'bathroom_deep_clean' ? '...' : 'Gen Bathrooms'}
+            <button onClick={() => handleGenerate('bathroom_deep_clean')} disabled={!!generating} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition-all duration-150 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed ${darkMode ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'}`}>
+              <span className="material-symbols-outlined select-none text-base leading-none">shower</span>
+              {generating === 'bathroom_deep_clean' ? 'Generating...' : 'Generate Bathrooms'}
             </button>
-            <button onClick={() => handleGenerate('vent_cleaning')} disabled={!!generating} className="rounded-xl bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-400 hover:bg-blue-500/20 disabled:opacity-50 border border-blue-500/20">
-              {generating === 'vent_cleaning' ? '...' : 'Gen Vents'}
+            <button onClick={() => handleGenerate('vent_cleaning')} disabled={!!generating} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition-all duration-150 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed ${darkMode ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'}`}>
+              <span className="material-symbols-outlined select-none text-base leading-none">air</span>
+              {generating === 'vent_cleaning' ? 'Generating...' : 'Generate Vents'}
             </button>
-            <button onClick={() => handleGenerate('daily')} disabled={!!generating} className="rounded-xl bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 border border-amber-500/20">
-              {generating === 'daily' ? '...' : 'Gen Daily'}
+            <button onClick={() => handleGenerate('daily')} disabled={!!generating} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition-all duration-150 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed ${darkMode ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200'}`}>
+              <span className="material-symbols-outlined select-none text-base leading-none">cleaning_services</span>
+              {generating === 'daily' ? 'Generating...' : 'Generate Daily'}
             </button>
           </div>
         </div>
@@ -239,15 +242,15 @@ export default function ScheduleView({ darkMode }) {
                 <div className="flex gap-2 flex-shrink-0 flex-wrap">
                   {task.status === 'scheduled' && (
                     <>
-                      <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-500 hover:bg-emerald-500/20">Complete</button>
-                      <button onClick={() => handleIncomplete(task.id)} className="rounded-xl bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500/20">Incomplete</button>
+                      <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3.5 py-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all duration-150 active:scale-[0.97] border border-emerald-500/20">Complete</button>
+                      <button onClick={() => handleIncomplete(task.id)} className="rounded-xl bg-rose-500/10 px-3.5 py-1.5 text-[12px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-all duration-150 active:scale-[0.97] border border-rose-500/20">Incomplete</button>
                     </>
                   )}
                   {task.status === 'in_progress' && (
-                    <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-500 hover:bg-emerald-500/20">Complete</button>
+                    <button onClick={() => handleComplete(task.id)} className="rounded-xl bg-emerald-500/10 px-3.5 py-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all duration-150 active:scale-[0.97] border border-emerald-500/20">Complete</button>
                   )}
                   {task.status === 'incomplete' && (
-                    <button onClick={() => handleCreateFollowUp(task.id)} className="rounded-xl bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-400 hover:bg-violet-500/20">Brema Follow-up</button>
+                    <button onClick={() => handleCreateFollowUp(task.id)} className="rounded-xl bg-violet-500/10 px-3.5 py-1.5 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 transition-all duration-150 active:scale-[0.97] border border-violet-500/20">Brema Follow-up</button>
                   )}
                   <select value={task.status} onChange={e => handleStatusChange(task.id, e.target.value)} className={`rounded-xl px-2 py-1.5 text-xs border ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}>
                     {STATUSES.filter(s => s.value).map(s => <option key={s.value} value={s.value}>{s.label}</option>)}

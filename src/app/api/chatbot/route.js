@@ -17,8 +17,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    if (message && /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico)\b|!\[|\bimage\b|\bupload\b|\bfile\b/i.test(message)) {
-      return NextResponse.json({ error: true, message: 'This model supports text only. Please describe what you need rather than referencing files or images.' });
+    if (message && /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|heic|tiff|raw)\b|!\[|\[image\]|image\.png|upload.*image/i.test(message)) {
+      return NextResponse.json({ error: true, message: 'This assistant works with text only. Describe what you need in words.' });
     }
 
     if (confirmAction) {

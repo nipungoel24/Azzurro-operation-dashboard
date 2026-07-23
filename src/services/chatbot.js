@@ -247,6 +247,9 @@ export async function processChatMessage(message, userEmail, userName) {
   try {
     parsed = typeof aiResponse === 'string' ? JSON.parse(aiResponse) : aiResponse;
   } catch {
+    if (typeof aiResponse === 'string' && /image|png|jpg|does not support/i.test(aiResponse)) {
+      return { action: 'error', message: 'This assistant works with text only. Describe what you need in words.' };
+    }
     return { action: 'error', message: 'AI returned invalid response. Please try again.', raw: aiResponse };
   }
 
@@ -302,8 +305,16 @@ async function callDeepSeek(message, context) {
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '';
 
+  if (/image|\.png|\.jpg|does not support image/i.test(content)) {
+    throw new Error('IMAGE_NOT_SUPPORTED');
+  }
+
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) return JSON.parse(jsonMatch[0]);
+
+  if (content.includes('image') || content.includes('png') || content.includes('jpg')) {
+    throw new Error('IMAGE_NOT_SUPPORTED');
+  }
 
   throw new Error('No valid JSON found in AI response');
 }
