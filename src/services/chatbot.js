@@ -29,8 +29,6 @@ const SYSTEM_PROMPT = `You are an operations assistant for Azzurro Hotels, a mul
 
 Your job is to help staff manage cleaning, maintenance, and facility operations through a structured action system.
 
-IMPORTANT: You are a TEXT-ONLY assistant. Never reference or attempt to read images, files, or attachments. If a user mentions a file or image, tell them you can only process text.
-
 AVAILABLE ACTIONS:
 - query_schedule: Get scheduled tasks. Params: {propertyName, status, assigneeName, date, category, limit}
 - query_incomplete_tasks: Get tasks marked incomplete. Params: {propertyName, date, assigneeName}
@@ -237,9 +235,6 @@ export async function processChatMessage(message, userEmail, userName) {
     aiResponse = await callDeepSeek(message, context);
   } catch (err) {
     console.error('[Chatbot] DeepSeek API error:', err.message);
-    if (err.message === 'IMAGE_NOT_SUPPORTED') {
-      return { action: 'error', message: 'This model does not support image input. Please describe what you need in text only.' };
-    }
     return { action: 'error', message: 'Failed to get response from AI. Please try again.' };
   }
 
@@ -247,10 +242,7 @@ export async function processChatMessage(message, userEmail, userName) {
   try {
     parsed = typeof aiResponse === 'string' ? JSON.parse(aiResponse) : aiResponse;
   } catch {
-    if (typeof aiResponse === 'string' && /image|png|jpg|does not support/i.test(aiResponse)) {
-      return { action: 'error', message: 'This assistant works with text only. Describe what you need in words.' };
-    }
-    return { action: 'error', message: 'AI returned invalid response. Please try again.', raw: aiResponse };
+    return { action: 'error', message: 'AI returned invalid response. Please try again.' };
   }
 
   if (!parsed.action || !ALLOWED_ACTIONS.includes(parsed.action)) {
@@ -274,12 +266,12 @@ export async function processChatMessage(message, userEmail, userName) {
 }
 
 async function callDeepSeek(message, context) {
-  let sanitized = message
-    .replace(/```[\s\S]*?```/g, '[code block removed]')
-    .replace(/!\[.*?\]\(.*?\)/g, '[image removed]')
+  const sanitized = message
+    .replace(/```[\s\S]*?```/g, '[block removed]')
+    .replace(/!\[.*?\]\(.*?\)/g, '[removed]')
     .replace(/\bhttps?:\/\/\S+/g, '[link removed]')
-    .replace(/\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|heic|tiff|raw|pdf|docx?|xlsx?)\b/gi, '')
-    .replace(/\b(screenshot|image\.png|upload|image file|picture|photo)\b/gi, 'text');
+    .replace(/\.\w{2,4}\b/g, '')
+    .replace(/\b\w+\/\w+\.\w+\b/g, '');
 
   const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -300,25 +292,14 @@ async function callDeepSeek(message, context) {
 
   if (!response.ok) {
     const text = await response.text();
-    if (text.toLowerCase().includes('image') || text.toLowerCase().includes('not support')) {
-      throw new Error('IMAGE_NOT_SUPPORTED');
-    }
-    throw new Error(`DeepSeek API error: ${response.status} ${text}`);
+    throw new Error(`DeepSeek API error: ${response.status}`);
   }
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '';
 
-  if (/image|\.png|\.jpg|does not support image/i.test(content)) {
-    throw new Error('IMAGE_NOT_SUPPORTED');
-  }
-
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) return JSON.parse(jsonMatch[0]);
-
-  if (content.includes('image') || content.includes('png') || content.includes('jpg')) {
-    throw new Error('IMAGE_NOT_SUPPORTED');
-  }
 
   throw new Error('No valid JSON found in AI response');
 }
