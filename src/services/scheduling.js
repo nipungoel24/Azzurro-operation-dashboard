@@ -195,10 +195,56 @@ export async function generateBathroomDeepCleanTasks(user, {
   const where = { type: 'bathroom', active: true, ownerOccupied: false, cleaningRequired: true };
   if (propertyCode) where.propertyCode = propertyCode;
 
-  const bathrooms = await prisma.facility.findMany({
+  const allBathrooms = await prisma.facility.findMany({
     where,
     orderBy: { lastDeepCleanedAt: { sort: 'asc', nulls: 'first' } },
   });
+
+  // Split into shared/common vs ensuite (enclosed in a room)
+  const sharedBathrooms = allBathrooms.filter(b => !b.isEnsuite);
+  const ensuiteBathrooms = allBathrooms.filter(b => b.isEnsuite && b.assignedRoomId);
+
+  // For ensuite bathrooms, check which rooms are empty today
+  let emptyRoomNumbers = new Set();
+  if (ensuiteBathrooms.length > 0) {
+    try {
+      const emptyRooms = await prisma.emptyRoomSnapshot.findMany({
+        where: {
+          propertyId: { in: [...new Set(ensuiteBathrooms.map(b => b.propertyId))] },
+        },
+        select: { roomNumber: true, propertyId: true },
+      });
+      emptyRooms.forEach(r => emptyRoomNumbers.add(`${r.propertyId}:${r.roomNumber}`.toLowerCase()));
+    } catch {
+      // Cloudbeds data unavailable — fall back to including all bathrooms
+    }
+  }
+
+  // Determine which ensuite bathrooms are in empty rooms
+  let cleanableEnsuite = ensuiteBathrooms;
+  if (emptyRoomNumbers.size > 0) {
+    cleanableEnsuite = [];
+    for (const b of ensuiteBathrooms) {
+      try {
+        const room = await prisma.room.findUnique({ where: { id: b.assignedRoomId }, select: { roomNumber: true } });
+        if (room && emptyRoomNumbers.has(`${b.propertyId}:${room.roomNumber}`.toLowerCase())) {
+          cleanableEnsuite.push(b);
+        }
+      } catch {
+        // If room lookup fails, include the bathroom anyway
+        cleanableEnsuite.push(b);
+      }
+    }
+  }
+
+  // Combine: shared bathrooms always included, ensuite only if room is empty
+  const bathrooms = [...sharedBathrooms, ...cleanableEnsuite].sort((a, b) => {
+    const aDate = a.lastDeepCleanedAt ? new Date(a.lastDeepCleanedAt).getTime() : 0;
+    const bDate = b.lastDeepCleanedAt ? new Date(b.lastDeepCleanedAt).getTime() : 0;
+    return aDate - bDate;
+  });
+
+  if (bathrooms.length === 0) return [];
 
   const createdTasks = [];
 
@@ -213,9 +259,29 @@ export async function generateBathroomDeepCleanTasks(user, {
     });
     if (dup) continue;
 
+    const sharedCount = batch.filter(b => !b.isEnsuite).length;
+    const ensuiteCount = batch.filter(b => b.isEnsuite).length;
+    let typeLabel = '';
+    if (sharedCount > 0 && ensuiteCount > 0) typeLabel = `${sharedCount} shared + ${ensuiteCount} ensuite`;
+    else if (sharedCount > 0) typeLabel = `${sharedCount} shared`;
+    else typeLabel = `${ensuiteCount} ensuite`;
+
+    // Gather room numbers for ensuite bathrooms
+    let roomInfo = '';
+    if (ensuiteCount > 0) {
+      const roomNumbers = [];
+      for (const b of batch.filter(b => b.isEnsuite && b.assignedRoomId)) {
+        try {
+          const rm = await prisma.room.findUnique({ where: { id: b.assignedRoomId }, select: { roomNumber: true } });
+          if (rm) roomNumbers.push(rm.roomNumber);
+        } catch {}
+      }
+      if (roomNumbers.length > 0) roomInfo = ` | Rooms: ${roomNumbers.join(', ')}`;
+    }
+
     const task = await createScheduledTask({
       title: `Bathroom Deep Clean: ${bathroomNames} @ ${propName}`,
-      description: `Deep clean ${batch.length} bathroom(s): ${bathroomNames}. Age-based priority.`,
+      description: `Deep clean ${batch.length} bathroom(s) [${typeLabel}]${roomInfo}. Age-based priority.`,
       category: 'bathroom_deep_clean',
       propertyName: propName,
       facilityId: bathroomNames,
@@ -242,7 +308,9 @@ export async function generateBathroomDeepCleanTasks(user, {
     }
   }
 
-  return createdTasks;
+  const skippedEnsuite = allBathrooms.filter(b => b.isEnsuite && b.assignedRoomId).length - cleanableEnsuite.length;
+
+  return { tasks: createdTasks, skippedEnsuite, totalBathrooms: allBathrooms.length, cleanable: bathrooms.length };
 }
 
 // ── Vent cleaning scheduling ──────────────────────────────────────────

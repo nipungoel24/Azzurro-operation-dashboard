@@ -11,6 +11,7 @@ export default function FloatingControlPill({
   onGenerateVents,
   onGenerateDaily,
   onSyncEmptyRooms,
+  onAssign,
   generatingState,
 }) {
   const btn = `flex items-center justify-center p-2 rounded-full transition-all cursor-pointer ${darkMode ? 'text-slate-400 hover:text-slate-200 hover:bg-white/5' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-900/5'}`;
@@ -22,6 +23,7 @@ export default function FloatingControlPill({
 
   const views = {
     schedule: [
+      { key: 'assign', icon: 'person_add', label: 'Assign task', onClick: onAssign, primary: true },
       { key: 'bath', icon: 'shower', label: 'Generate bathrooms', onClick: () => onGenerateBathrooms?.('bathroom_deep_clean'), disabled: !!generatingState },
       { key: 'vent', icon: 'air', label: 'Generate vents', onClick: () => onGenerateVents?.('vent_cleaning'), disabled: !!generatingState },
       { key: 'daily', icon: 'cleaning_services', label: 'Generate daily', onClick: () => onGenerateDaily?.('daily'), disabled: !!generatingState },
@@ -29,31 +31,14 @@ export default function FloatingControlPill({
     'empty-rooms-live': [
       { key: 'sync', icon: 'sync', label: 'Sync Cloudbeds', onClick: onSyncEmptyRooms, disabled: !!generatingState },
     ],
-    facilities: [
-      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
-    ],
-    'property-inventory': [
-      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
-    ],
-    'room-inventory': [
-      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
-    ],
-    'bathroom-inventory': [
-      { key: 'add', icon: 'add', label: 'Add facility', onClick: () => setActiveView('facilities') },
-    ],
-    handoffs: [
-      { key: 'handoff', icon: 'swap_horiz', label: 'New handoff', onClick: () => setActiveView('handoffs') },
-    ],
-    default: [
+    'board': [
       { key: 'task', icon: 'add', label: 'New task', onClick: openCreateTaskModal, primary: true },
     ],
   };
 
-  const actions = views[activeView] || views.default;
-
   return (
     <div
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 shadow-lg rounded-full flex items-center gap-2 px-4 py-2.5"
+      className="fixed bottom-6 lg:bottom-8 left-1/2 -translate-x-1/2 z-30 shadow-lg rounded-full flex items-center gap-1.5 lg:gap-2 px-3 lg:px-4 py-2 lg:py-2.5 max-sm:scale-90"
       style={{
         background: darkMode ? 'rgba(15, 17, 21, 0.35)' : 'rgba(255, 255, 255, 0.35)',
         backdropFilter: 'blur(12px)',

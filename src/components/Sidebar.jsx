@@ -25,7 +25,9 @@ export default function Sidebar({
 
   const [sydneyTime, setSydneyTime] = useState('');
   const [sydneyDate, setSydneyDate] = useState('');
+  const [trackersOpen, setTrackersOpen] = useState(false);
   const [facilitiesOpen, setFacilitiesOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isFacilitiesActive = ['facilities', 'property-inventory', 'room-inventory', 'bathroom-inventory', 'review-queue'].includes(activeView);
 
@@ -56,8 +58,26 @@ export default function Sidebar({
     `w-full flex items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] transition-all ${active ? (darkMode ? 'bg-white/10 text-white' : 'bg-white text-[#3d3730] shadow-sm') : (darkMode ? 'text-slate-300 hover:bg-white/5 hover:text-white' : 'text-[#877d6c] hover:bg-white/70 hover:text-[#5c5446]')}`
   );
 
+  const handleNav = (view) => { handleNav(view); setMobileOpen(false); };
+
   return (
-    <aside className={`transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'} backdrop-blur-md border-r flex flex-col z-10 flex-shrink-0 relative ${darkMode ? 'bg-[#24211d]/90 border-[#3d3730] text-[#c2baa9]' : 'bg-[#f0ece1]/90 border-[#e3ded0] text-[#5c5446]'}`}>
+    <>
+      {/* Mobile hamburger */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className={`lg:hidden fixed top-4 left-4 z-50 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${darkMode ? 'bg-[#24211d] text-slate-300 border border-white/10' : 'bg-white text-slate-700 border border-slate-200'}`}
+      >
+        <span className="material-symbols-outlined select-none text-xl">{mobileOpen ? 'close' : 'menu'}</span>
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside className={`transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'} backdrop-blur-md border-r flex flex-col z-40 flex-shrink-0 relative
+        max-lg:fixed max-lg:top-0 max-lg:left-0 max-lg:h-full max-lg:w-64 max-lg:z-50 ${mobileOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full'} ${darkMode ? 'bg-[#24211d]/95 border-[#3d3730] text-[#c2baa9]' : 'bg-[#f0ece1]/95 border-[#e3ded0] text-[#5c5446]'}`}
+      >
       <div className={`transition-all duration-300 flex items-center border-b ${sidebarCollapsed ? 'flex-col gap-3 p-4 py-5 justify-center' : 'flex-row justify-between p-6 py-5'} ${darkMode ? 'border-slate-800/65' : 'border-slate-100/65'}`}>
         {!sidebarCollapsed && (
           <h1 className="text-[20px] font-black leading-tight tracking-tight animate-fade-in font-serif-display select-none">
@@ -86,7 +106,7 @@ export default function Sidebar({
           <div className={`border-t my-4 mx-2 ${darkMode ? 'border-slate-800/60' : 'border-slate-100/60'}`} />
         )}
         
-        <button onClick={() => setActiveView('board')} className={sidebarBtn(activeView === 'board', 'Sprint Board')} title="Sprint Board">
+        <button onClick={() => handleNav('board')} className={sidebarBtn(activeView === 'board', 'Sprint Board')} title="Sprint Board">
           <Icons.Board />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Sprint Board</span>}
         </button>
@@ -98,12 +118,12 @@ export default function Sidebar({
           <div className={`border-t my-4 mx-2 ${darkMode ? 'border-slate-800/60' : 'border-slate-100/60'}`} />
         )}
 
-        <button onClick={() => setActiveView("schedule")} className={sidebarBtn(activeView === 'schedule')} title="Scheduled Activities">
+        <button onClick={() => handleNav("schedule")} className={sidebarBtn(activeView === 'schedule')} title="Scheduled Activities">
           <NavIcon name="calendar_month" />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Scheduled Activities</span>}
         </button>
 
-        <button onClick={() => setActiveView("empty-rooms-live")} className={sidebarBtn(activeView === 'empty-rooms-live')} title="Empty Rooms Live">
+        <button onClick={() => handleNav("empty-rooms-live")} className={sidebarBtn(activeView === 'empty-rooms-live')} title="Empty Rooms Live">
           <NavIcon name="hotel" />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Empty Rooms — Live</span>}
         </button>
@@ -112,9 +132,9 @@ export default function Sidebar({
         <div className="space-y-1">
           <button
             onClick={() => {
-              if (sidebarCollapsed) { setActiveView('facilities'); return; }
+              if (sidebarCollapsed) { handleNav('facilities'); return; }
               setFacilitiesOpen(!facilitiesOpen);
-              if (!isFacilitiesActive) setActiveView('facilities');
+              if (!isFacilitiesActive) handleNav('facilities');
             }}
             className={sidebarBtn(isFacilitiesActive, 'Facilities')}
             title="Facility Inventory"
@@ -130,23 +150,23 @@ export default function Sidebar({
 
           {!sidebarCollapsed && facilitiesOpen && (
             <div className={`ml-4 space-y-1 rounded-2xl border px-2 py-2 mt-1 ${darkMode ? 'border-white/8 bg-white/[0.03]' : 'border-[#e7e1d3] bg-white/40'}`}>
-              <button onClick={() => setActiveView("facilities")} className={subBtn(activeView === "facilities")}>
+              <button onClick={() => handleNav("facilities")} className={subBtn(activeView === "facilities")}>
                 <NavIcon name="construction" />
                 <span className="font-medium">All Facilities</span>
               </button>
-              <button onClick={() => setActiveView("property-inventory")} className={subBtn(activeView === "property-inventory")}>
+              <button onClick={() => handleNav("property-inventory")} className={subBtn(activeView === "property-inventory")}>
                 <NavIcon name="apartment" />
                 <span className="font-medium">Property Overview</span>
               </button>
-              <button onClick={() => setActiveView("room-inventory")} className={subBtn(activeView === "room-inventory")}>
+              <button onClick={() => handleNav("room-inventory")} className={subBtn(activeView === "room-inventory")}>
                 <NavIcon name="door_front" />
                 <span className="font-medium">Room Inventory</span>
               </button>
-              <button onClick={() => setActiveView("bathroom-inventory")} className={subBtn(activeView === "bathroom-inventory")}>
+              <button onClick={() => handleNav("bathroom-inventory")} className={subBtn(activeView === "bathroom-inventory")}>
                 <NavIcon name="shower" />
                 <span className="font-medium">Bathroom Inventory</span>
               </button>
-              <button onClick={() => setActiveView("review-queue")} className={subBtn(activeView === "review-queue")}>
+              <button onClick={() => handleNav("review-queue")} className={subBtn(activeView === "review-queue")}>
                 <NavIcon name="rate_review" />
                 <span className="font-medium">Review Queue</span>
               </button>
@@ -154,17 +174,17 @@ export default function Sidebar({
           )}
         </div>
 
-        <button onClick={() => setActiveView("handoffs")} className={sidebarBtn(activeView === 'handoffs')} title="Shift Handoffs">
+        <button onClick={() => handleNav("handoffs")} className={sidebarBtn(activeView === 'handoffs')} title="Shift Handoffs">
           <NavIcon name="swap_horiz" />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Shift Handoffs</span>}
         </button>
 
-        <button onClick={() => setActiveView("history")} className={sidebarBtn(activeView === 'history')} title="Activity History">
+        <button onClick={() => handleNav("history")} className={sidebarBtn(activeView === 'history')} title="Activity History">
           <NavIcon name="history" />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Activity History</span>}
         </button>
 
-        <button onClick={() => setActiveView("guide")} className={sidebarBtn(activeView === 'guide')} title="Usage Guide">
+        <button onClick={() => handleNav("guide")} className={sidebarBtn(activeView === 'guide')} title="Usage Guide">
           <NavIcon name="book" />
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Usage Guide</span>}
         </button>
@@ -241,5 +261,6 @@ export default function Sidebar({
         )}
       </div>
     </aside>
+    </>
   );
 }

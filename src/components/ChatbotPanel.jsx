@@ -7,6 +7,7 @@ export default function ChatbotPanel({ darkMode, onClose }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -20,13 +21,16 @@ export default function ChatbotPanel({ darkMode, onClose }) {
   const handleSend = async () => {
     const text = input.trim();
     if (!text || loading) return;
-    setMessages(prev => [...prev, { role: 'user', text, id: Date.now() }]);
+    const userMsg = { role: 'user', text, id: Date.now() };
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput('');
     setLoading(true);
     try {
+      const history = updatedMessages.slice(-21, -1).map(m => ({ role: m.role, text: m.text }));
       const res = await fetch('/api/chatbot', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, history }),
       });
       const data = await res.json();
       if (data.requiresConfirmation) {
@@ -79,7 +83,7 @@ export default function ChatbotPanel({ darkMode, onClose }) {
     : 'w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-800 border border-slate-100 transition-all duration-150 cursor-pointer';
 
   return (
-    <div className={`fixed bottom-20 right-6 w-[400px] h-[560px] rounded-2xl shadow-2xl border flex flex-col z-40 overflow-hidden ${darkMode ? 'bg-[#1c1f26] border-white/[0.08]' : 'bg-white border-slate-200'}`}>
+    <div className={`fixed bottom-20 right-6 rounded-2xl shadow-2xl border flex flex-col z-40 overflow-hidden transition-all duration-300 ${darkMode ? 'bg-[#1c1f26] border-white/[0.08]' : 'bg-white border-slate-200'} ${isFullscreen ? 'inset-4 w-auto h-auto' : 'w-[400px] h-[560px]'}`}>
 
       <div className={`flex items-center justify-between px-5 py-4 border-b shrink-0 ${darkMode ? 'border-white/[0.06]' : 'border-slate-100'}`}>
         <div className="flex items-center gap-3">
@@ -91,9 +95,14 @@ export default function ChatbotPanel({ darkMode, onClose }) {
             <p className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>DeepSeek</p>
           </div>
         </div>
-        <button onClick={onClose} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}>
-          <span className="material-symbols-outlined select-none text-base">close</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setIsFullscreen(!isFullscreen)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <span className="material-symbols-outlined select-none text-base">{isFullscreen ? 'collapse_content' : 'open_in_full'}</span>
+          </button>
+          <button onClick={onClose} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}>
+            <span className="material-symbols-outlined select-none text-base">close</span>
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 custom-scrollbar">

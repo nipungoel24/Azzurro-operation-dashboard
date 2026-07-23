@@ -62,21 +62,50 @@ AVAILABLE ACTIONS:
 - revert_change: Revert a change. Params: {auditLogId} (REQUIRES CONFIRMATION)
 
 RULES:
-1. Always respond with a valid JSON object: {"action": "...", "params": {...}, "message": "human-readable summary", "requiresConfirmation": false, "data": {...}}
-2. For dangerous actions (creating bulk tasks, reverting), set "requiresConfirmation": true
-3. For conversational/general queries, use "action": "respond" with a helpful message. Reference available context data where relevant.
-4. Parse "today", "tomorrow", "tonight" relative to Australia/Sydney timezone
-5. "tonight" = night shift today, "next Monday" = the upcoming Monday
-6. Property names: Potts Point, Surry Hills, Darling Harbour, Central Sydney, The Pyrmont Budget Hotel, Olympic Hotel
-7. Task categories: bathroom_deep_clean, vent_cleaning, general_cleaning, night_shift, overnight_maintenance, cockroach_spraying, ac_check, hardware_check, supplies, laundry_pod, go_key_charge, bed_frame_check, curtain_rod_check, other
-8. Shifts: morning, afternoon, night, overnight
-9. If you cannot determine intent, ask for clarification via the message field
-10. Never invent room numbers, staff names, or facility counts
-11. Default task priority is "medium"
-12. When using "respond", include a thorough, well-formatted response in the message field. Use the context data to provide accurate information.
-13. You have access to a limited set of context. If asked about data you don't have, explain what you can help with instead.`;
+1. Always respond with a valid JSON object: {"action": "...", "params": {...}, "message": "...", "requiresConfirmation": false, "data": {...}}
 
-const SUBSEQUENT_SYSTEM_PROMPT = `You are continuing a conversation as an operations assistant for Azzurro Hotels. You have already executed actions and provided information to the user. Continue naturally based on their next message. Use the same JSON response format and action set.`;
+2. **BE AN ADVISOR, NOT A SILENT EXECUTOR.** Before taking any action, always explain what you're about to do in the message field. Suggest options if there are multiple ways. Never execute silently.
+
+3. **SUGGEST OPTIONS.** When the user gives a vague or ambitious request (e.g. "clean everything"), respond with "respond" and suggest specific, actionable options. For example:
+   - "Did you mean bathroom deep clean, vent cleaning, or general cleaning?"
+   - "Should I generate tasks for one property or all properties?"
+   - "Which shift — morning, afternoon, or night?"
+
+4. **FLAG IMPOSSIBLE OR UNREALISTIC REQUESTS.** If a request cannot be fulfilled (e.g. "clean 200 bathrooms with 1 cleaner by tonight"), use "respond" and explain why it's not feasible. Suggest a realistic alternative. Examples:
+   - "There are 60 ensuite bathrooms but only 12 rooms are empty tonight — I can schedule those 12."
+   - "That's 47 tasks for one cleaner — they can realistically handle 4. Want me to split across shifts?"
+
+5. **ASK CLARIFYING QUESTIONS.** If the user's request is ambiguous, ask. "When you say 'allen', do you mean a property location? If so, which one?" — Never guess and execute.
+
+6. **EXPLAIN BEFORE CONFIRMING.** For dangerous actions (creating bulk tasks, reverting), always explain what will happen BEFORE asking for confirmation. "This will generate bathroom deep clean tasks across 6 properties for tomorrow night shift — about 30-40 tasks. Proceed?"
+
+7. **USE CONTEXT DATA.** Reference the current operational context provided to you. If context shows 5 empty rooms at Darling Harbour, mention that. If the user asks for something the context doesn't cover, explain what you know vs what you'd need to look up.
+
+8. **For conversational/general queries, use "action": "respond"** with a thorough, well-formatted markdown response. Be helpful, informative, and natural.
+
+9. Parse "today", "tomorrow", "tonight" relative to Australia/Sydney timezone (UTC+10/+11). "tonight" = night shift today, "next Monday" = the upcoming Monday. Compute dates in YYYY-MM-DD.
+
+10. **Property names with aliases:**
+    - "Potts Point" / "potts" / "potts point"
+    - "Surry Hills" / "surry" / "surry hills"
+    - "Darling Harbour" / "darling" / "darling harbour"
+    - "Central Sydney" / "central" / "sydney central"
+    - "The Pyrmont Budget Hotel" / "pyrmont" / "pyrmont budget"
+    - "Olympic Hotel" / "olympic" / "olympic"
+    - "All" / "all properties" / "everywhere" / "every property" = all active properties
+    IMPORTANT: When user says a street name, neighborhood, or unfamiliar term (e.g. "Allen", "Waterloo", "Redfern"), they are most likely referring to a PROPERTY LOCATION, NOT a person name. Ask "Did you mean one of our properties near that area?" and suggest the closest match.
+
+11. Task categories: bathroom_deep_clean, vent_cleaning, general_cleaning, night_shift, overnight_maintenance, cockroach_spraying, ac_check, hardware_check, supplies, laundry_pod, go_key_charge, bed_frame_check, curtain_rod_check, other
+
+12. Shifts: morning, afternoon, night, overnight
+
+13. Never invent room numbers, staff names, or facility counts. Default task priority is "medium".
+
+14. SCHEDULING: "schedule bathroom deep clean for tomorrow night shift" → generate_bathroom_tasks. "create task for X at Y" → create_task. "all properties" / "every property" → propertyCode: null.
+
+15. When generating tasks for all properties, warn the user about the scale. "This will generate tasks across 6 properties — approximately X tasks. Proceed?"`;
+
+const SUBSEQUENT_SYSTEM_PROMPT = `You are continuing a conversation as an operations assistant for Azzurro Hotels. Reference what was discussed earlier. Be conversational. Suggest options when appropriate, flag issues, and guide the user. Use the same JSON response format.`;
 
 function validateActionSchema(action, params) {
   const schemas = {
@@ -214,7 +243,7 @@ function validateActionSchema(action, params) {
   }
 }
 
-export async function processChatMessage(message, userEmail, userName) {
+export async function processChatMessage(message, userEmail, userName, history = []) {
   if (!DEEPSEEK_API_KEY) {
     return { action: 'error', message: 'DeepSeek API key not configured. Please set DEEPSEEK_API_KEY.' };
   }
@@ -239,7 +268,7 @@ export async function processChatMessage(message, userEmail, userName) {
 
   let aiResponse;
   try {
-    aiResponse = await callDeepSeek(message, context);
+    aiResponse = await callDeepSeek(message, context, history);
   } catch (err) {
     console.error('[Chatbot] DeepSeek API error:', err.message);
     return { action: 'error', message: err.message || 'Failed to get response from AI. Please try again.' };
@@ -281,16 +310,34 @@ export async function processChatMessage(message, userEmail, userName) {
   return await executeAction(parsed.action, parsed.params || {}, user, parsed.message);
 }
 
-async function callDeepSeek(message, context) {
+async function callDeepSeek(message, context, history = []) {
+  const contextBlock = context ? JSON.stringify(context, null, 2) : '';
+
   const sanitized = message
     .replace(/```[\s\S]*?```/g, '[block removed]')
     .replace(/!\[.*?\]\(.*?\)/g, '[removed]')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
     .replace(/\bhttps?:\/\/\S+/g, '[link removed]')
-    .replace(/\b\S*\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw|pdf|docx?|xlsx?|pptx?)\b/gi, '[file removed]')
-    .replace(/\bdata:image\/\S+/gi, '[data uri removed]');
+    .replace(/\b\S+\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw|pdf|docx?|xlsx?|pptx?)\b/gi, '[file removed]')
+    .replace(/\bdata:image\/\S+/gi, '[data uri removed]')
+    .replace(/["']\S+\.(png|jpe?g|gif|svg|webp|bmp)["']/gi, '"[file removed]"')
+    .replace(/\b\S*image\S*\.\S+/gi, '[file removed]');
 
-  const contextBlock = context ? JSON.stringify(context, null, 2) : '';
+  const sanitizedContext = contextBlock
+    .replace(/\b\S+\.(png|jpe?g|gif|svg|webp|bmp|ico)\b/gi, '[file]')
+    .replace(/\b\S*image\S*\.\S+/gi, '[file]');
+
+  const historyMessages = history.slice(-10).map(h => ({
+    role: h.role === 'user' ? 'user' : 'assistant',
+    content: typeof h.text === 'string' ? h.text.replace(/\b\S+\.(png|jpe?g|gif|svg|webp|bmp|ico)\b/gi, '[file]') : '',
+  }));
+
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: `Current operational context:\n${sanitizedContext}` },
+    ...historyMessages,
+    { role: 'user', content: sanitized },
+  ];
 
   let response;
   try {
@@ -302,11 +349,7 @@ async function callDeepSeek(message, context) {
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'system', content: `Current operational context:\n${contextBlock}` },
-          { role: 'user', content: sanitized },
-        ],
+        messages,
         temperature: 0.3,
         max_tokens: 3000,
       }),

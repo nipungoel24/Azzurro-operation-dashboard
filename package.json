@@ -30,7 +30,8 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "vitest": "^4.1.10"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

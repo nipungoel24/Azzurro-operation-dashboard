@@ -1,32 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
-export default function EmptyRoomsLive({ darkMode }) {
-  const [roomsData, setRoomsData] = useState(null);
-  const [loading, setLoading] = useState(true);
+export default function EmptyRoomsLive({ darkMode, cachedData, initialLoading, refreshing, onRefresh }) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [filterProperty, setFilterProperty] = useState('All');
   const [lastSync, setLastSync] = useState(null);
-  const [lastFetchTime, setLastFetchTime] = useState(null);
 
-  const fetchEmptyRooms = async (force = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const url = force ? '/api/empty-rooms?refresh=true' : '/api/empty-rooms';
-      const res = await fetch(url);
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-      const data = await res.json();
-      setRoomsData(data);
-      setLastFetchTime(new Date());
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const roomsData = cachedData;
 
   const handleSync = async () => {
     setSyncing(true);
@@ -36,7 +18,7 @@ export default function EmptyRoomsLive({ darkMode }) {
       const data = await res.json();
       if (data.success) {
         setLastSync(new Date());
-        fetchEmptyRooms(true);
+        if (onRefresh) await onRefresh(true);
       } else {
         setError(data.error);
       }
@@ -60,7 +42,7 @@ export default function EmptyRoomsLive({ darkMode }) {
       const data = await res.json();
       if (data.success) {
         alert(`Created ${data.count} task(s) for ${propertyName}.`);
-        fetchEmptyRooms(true);
+        if (onRefresh) await onRefresh(true);
       } else {
         setError(data.error);
       }
@@ -70,13 +52,6 @@ export default function EmptyRoomsLive({ darkMode }) {
       setSyncing(false);
     }
   };
-
-  useEffect(() => {
-    async function load() {
-      await fetchEmptyRooms();
-    }
-    load();
-  }, []);
 
   const filteredData = !roomsData ? [] : filterProperty === 'All'
     ? roomsData
@@ -88,19 +63,37 @@ export default function EmptyRoomsLive({ darkMode }) {
     <div className="space-y-6">
       <section className={`rounded-[28px] border p-5 shadow-sm backdrop-blur-xl md:p-6 ${darkMode ? 'border-white/10 bg-[#1a1d23]/75' : 'border-white/70 bg-white/70'}`}>
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h3 className="text-2xl font-black font-serif-display tracking-tight text-slate-900 dark:text-slate-100">
-              Empty Rooms — Live
-            </h3>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Real-time empty room data from Cloudbeds. Source of truth for occupancy.
-            </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h3 className="text-2xl font-black font-serif-display tracking-tight text-slate-900 dark:text-slate-100">
+                Empty Rooms — Live
+              </h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Real-time empty room data from Cloudbeds. Auto-updates every 60s.
+              </p>
+            </div>
+            {refreshing && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-2.5 py-1 text-[10px] font-bold text-indigo-400 animate-pulse">
+                <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Updating...
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            {lastFetchTime && <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Loaded: {lastFetchTime.toLocaleTimeString()}</span>}
             {lastSync && <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Synced: {lastSync.toLocaleTimeString()}</span>}
-            <button onClick={handleSync} disabled={syncing} className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50">
-              {syncing ? 'Syncing...' : 'Sync Now'}
+            <button onClick={handleSync} disabled={syncing || refreshing} className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50">
+              {syncing ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Syncing...
+                </>
+              ) : 'Sync Now'}
             </button>
           </div>
         </div>
@@ -127,8 +120,14 @@ export default function EmptyRoomsLive({ darkMode }) {
         </div>
       )}
 
-      {loading && !roomsData ? (
-        <p className="text-center text-slate-400 py-8">Loading empty rooms...</p>
+      {initialLoading && !roomsData ? (
+        <div className={`rounded-[28px] border border-dashed p-10 text-center ${darkMode ? 'border-slate-800 bg-[#15181d]/65' : 'border-slate-200 bg-white/65'}`}>
+          <svg className="mx-auto h-8 w-8 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <p className="mt-4 text-sm text-slate-400">Loading empty rooms data...</p>
+        </div>
       ) : (
         <div className="space-y-8">
           {filteredData.map(prop => (

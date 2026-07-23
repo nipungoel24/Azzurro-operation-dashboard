@@ -70,10 +70,6 @@ export async function updateCategory(key, updates) {
 
 export async function deleteCategory(key) {
   const cats = await getCategories();
-  const defKeys = DEFAULTS.map(d => d.key);
-  if (defKeys.includes(key)) {
-    throw new Error('Cannot delete a default category');
-  }
   const filtered = cats.filter(c => c.key !== key);
   await writeCategories(filtered);
   return { success: true };

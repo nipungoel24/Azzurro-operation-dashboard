@@ -10,8 +10,8 @@ async function generateForAll(user, dateStr, mode) {
   for (const prop of properties) {
     if (mode === 'all' || mode === 'bathroom_deep_clean') {
       try {
-        const bathTasks = await generateBathroomDeepCleanTasks(user, { propertyCode: prop.code, dateStr, bathroomsPerCleaner: 1 });
-        results.push({ property: prop.name, type: 'bathroom_deep_clean', count: bathTasks.length });
+        const bathResult = await generateBathroomDeepCleanTasks(user, { propertyCode: prop.code, dateStr, bathroomsPerCleaner: 1 });
+        results.push({ property: prop.name, type: 'bathroom_deep_clean', count: bathResult.tasks?.length || 0, skippedEnsuite: bathResult.skippedEnsuite || 0 });
       } catch (e) { results.push({ property: prop.name, type: 'bathroom_deep_clean', count: 0, error: e.message }); }
     }
     if (mode === 'all' || mode === 'vent_cleaning') {
@@ -47,8 +47,8 @@ export async function POST(request) {
 
     if (propertyCode) {
       if (mode === 'bathroom_deep_clean' || mode === 'all') {
-        const tasks = await generateBathroomDeepCleanTasks(user, { propertyCode, dateStr, bathroomsPerCleaner: 1 });
-        results.push({ type: 'bathroom_deep_clean', count: tasks.length });
+        const bathResult = await generateBathroomDeepCleanTasks(user, { propertyCode, dateStr, bathroomsPerCleaner: 1 });
+        results.push({ type: 'bathroom_deep_clean', count: bathResult.tasks?.length || 0, skippedEnsuite: bathResult.skippedEnsuite || 0 });
       }
       if (mode === 'vent_cleaning' || mode === 'all') {
         const tasks = await generateVentCleaningTasks(user, { propertyCode, bathroomsPerSession: 4 });

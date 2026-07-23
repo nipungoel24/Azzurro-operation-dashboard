@@ -234,6 +234,43 @@ export default function Home() {
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
 
+  // Empty rooms cached data — lifted here so it survives view switches
+  const [emptyRoomsCache, setEmptyRoomsCache] = useState(null);
+  const [emptyRoomsLoading, setEmptyRoomsLoading] = useState(true);
+  const [emptyRoomsRefreshing, setEmptyRoomsRefreshing] = useState(false);
+  const emptyRoomsFetched = useRef(false);
+
+  const fetchEmptyRoomsCached = async (force = false) => {
+    if (!emptyRoomsCache) {
+      setEmptyRoomsLoading(true);
+    } else {
+      setEmptyRoomsRefreshing(true);
+    }
+    try {
+      const url = force ? '/api/empty-rooms?refresh=true' : '/api/empty-rooms';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setEmptyRoomsCache(data);
+      }
+    } catch {}
+    setEmptyRoomsLoading(false);
+    setEmptyRoomsRefreshing(false);
+  };
+
+  // Fetch on first mount, then poll every 60s
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    if (!emptyRoomsFetched.current) {
+      emptyRoomsFetched.current = true;
+      fetchEmptyRoomsCached(false);
+    }
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') fetchEmptyRoomsCached(false);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [status]);
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
@@ -367,6 +404,11 @@ export default function Home() {
 
   const handleAddFacility = () => setActiveView('facilities');
   const handleAddHandoff = () => setActiveView('handoffs');
+  const [scheduleAssignTrigger, setScheduleAssignTrigger] = useState(0);
+  const handleOpenAssign = () => {
+    setActiveView('schedule');
+    setScheduleAssignTrigger(prev => prev + 1);
+  };
 
   // Hydrate theme and permissions
   useEffect(() => {
@@ -893,7 +935,7 @@ export default function Home() {
         handleLogout={handleLogout}
       />
 
-      <main className="flex-1 overflow-y-auto p-8 relative space-y-8 flex flex-col min-h-0">
+      <main className="flex-1 overflow-y-auto p-4 lg:p-8 relative space-y-6 lg:space-y-8 flex flex-col min-h-0 pt-16 lg:pt-8">
         {/* Top Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 flex-shrink-0">
           <div>
@@ -938,7 +980,7 @@ export default function Home() {
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="flex items-center gap-8 bg-transparent pr-4">
+          <div className="hidden md:flex items-center gap-8 bg-transparent pr-4">
             <div className="text-center">
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
                 Pending Today
@@ -1016,9 +1058,15 @@ export default function Home() {
               />
             </div>
           ) : activeView === "empty-rooms-live" ? (
-            <EmptyRoomsLive darkMode={darkMode} />
+            <EmptyRoomsLive
+              darkMode={darkMode}
+              cachedData={emptyRoomsCache}
+              initialLoading={emptyRoomsLoading}
+              refreshing={emptyRoomsRefreshing}
+              onRefresh={fetchEmptyRoomsCached}
+            />
           ) : activeView === "schedule" ? (
-            <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} />
+            <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} assignTrigger={scheduleAssignTrigger} />
           ) : activeView === "facilities" ? (
             <FacilityManager darkMode={darkMode} />
           ) : activeView === "handoffs" ? (
@@ -1036,7 +1084,7 @@ export default function Home() {
           ) : activeView === "guide" ? (
             <GuideBook darkMode={darkMode} />
           ) : (
-            <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} />
+            <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} assignTrigger={scheduleAssignTrigger} />
           )}
         </div>
       </main>
@@ -1052,16 +1100,14 @@ export default function Home() {
         onGenerateVents={handleGenerateFromPill}
         onGenerateDaily={handleGenerateFromPill}
         onSyncEmptyRooms={handleSyncEmptyRooms}
-        onAddFacility={handleAddFacility}
-        onAddHandoff={handleAddHandoff}
-        scheduleExportRef={scheduleExportRef}
+        onAssign={handleOpenAssign}
         generatingState={generatingFromPill}
       />
 
       {/* Chatbot Toggle Button */}
       <button
         onClick={() => setChatbotOpen(!chatbotOpen)}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-2xl shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 ${darkMode ? 'bg-indigo-600 text-white hover:bg-indigo-500 hover:shadow-indigo-500/25' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:shadow-indigo-300/25'}`}
+        className={`fixed bottom-28 max-sm:bottom-24 right-4 lg:right-6 z-40 w-12 h-12 lg:w-14 lg:h-14 rounded-2xl shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 ${darkMode ? 'bg-indigo-600 text-white hover:bg-indigo-500 hover:shadow-indigo-500/25' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:shadow-indigo-300/25'}`}
         title="Operations Assistant"
       >
         <span className="material-symbols-outlined select-none text-[26px] leading-none">smart_toy</span>

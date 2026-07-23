@@ -11,7 +11,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { message, confirmAction, confirmParams } = body;
+    const { message, confirmAction, confirmParams, history } = body;
 
     if (!message && !confirmAction) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -31,11 +31,16 @@ export async function POST(request) {
     const result = await processChatMessage(
       message,
       session.user.email,
-      session.user.name || session.user.email
+      session.user.name || session.user.email,
+      history || []
     );
 
     return NextResponse.json(result);
   } catch (err) {
+    if (err.message && err.message.includes('image')) {
+      return NextResponse.json({ action: 'respond', message: 'This model only supports text input.' });
+    }
+    console.error('[chatbot route]', err.message?.slice(0, 100));
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

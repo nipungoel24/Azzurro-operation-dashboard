@@ -44,6 +44,8 @@ next-env.d.ts
 # database (local SQLite)
 dev.db
 dev.db-journal
+dev.db-shm
+dev.db-wal
 
 # debug scripts
 /scratch/
@@ -55,3 +57,5 @@ dev.db-journal
 /tests/
 vitest.config.mts
 data/
+.vercel
+.env*

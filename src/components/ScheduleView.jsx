@@ -35,7 +35,7 @@ const PROP_CODES = { 'Potts Point': 'POTTS_POINT', 'Surry Hills': 'SURRY_HILLS',
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function ScheduleView({ darkMode, scheduleExportRef }) {
+export default function ScheduleView({ darkMode, scheduleExportRef, assignTrigger }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterProperty, setFilterProperty] = useState('');
@@ -52,6 +52,8 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
   const [dynamicCategories, setDynamicCategories] = useState(CATEGORIES);
   const [showCategoryEditor, setShowCategoryEditor] = useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const [editingCatKey, setEditingCatKey] = useState(null);
+  const [editCatLabel, setEditCatLabel] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
   // Calendar state
@@ -81,6 +83,10 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
   }, [filterProperty, filterStatus, filterCategory]);
 
   useEffect(() => { (async () => { setLoading(true); await fetchTasks(); setLoading(false); })(); }, [fetchTasks]);
+
+  useEffect(() => {
+    if (assignTrigger > 0) setAssignModal(true);
+  }, [assignTrigger]);
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
@@ -245,6 +251,25 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
         setDynamicCategories(prev => prev.filter(c => c.key !== key));
         if (filterCategory === key) setFilterCategory('');
         showToast('Category deleted');
+      } else {
+        const d = await res.json();
+        showToast(d.error || 'Failed');
+      }
+    } catch { showToast('Network error'); }
+  };
+
+  const handleUpdateCategory = async (key) => {
+    if (!editCatLabel.trim()) return;
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, label: editCatLabel.trim() }),
+      });
+      if (res.ok) {
+        const cat = await res.json();
+        setDynamicCategories(prev => prev.map(c => c.key === key ? { ...c, label: cat.label, icon: cat.icon } : c));
+        setEditingCatKey(null);
+        showToast('Category updated');
       } else {
         const d = await res.json();
         showToast(d.error || 'Failed');
@@ -502,7 +527,7 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
           </div>
         </div>
 
-        <div className="mt-4 flex gap-4 flex-wrap">
+        <div className="mt-4 flex gap-2 lg:gap-4 flex-wrap">
           <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)} className={`rounded-xl px-3 py-2 text-sm outline-none border ${darkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
             {PROPERTIES.map(p => <option key={p} value={p}>{p || 'All Properties'}</option>)}
           </select>
@@ -534,10 +559,24 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
             <div className="space-y-1">
               {dynamicCategories.map(c => (
                 <div key={c.key} className={`flex items-center gap-2 text-[12px] px-2 py-1 rounded-lg ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                  <span className="flex-1">{c.label}</span>
-                  <span className="text-[10px] opacity-40">{c.key}</span>
-                  {!['bathroom_deep_clean','vent_cleaning','general_cleaning','night_shift','overnight_maintenance','cockroach_spraying','ac_check','hardware_check','supplies','bed_frame_check','curtain_rod_check','other'].includes(c.key) && (
-                    <button onClick={() => handleDeleteCategory(c.key)} className="text-rose-400 hover:text-rose-300 text-[11px] font-medium">remove</button>
+                  {editingCatKey === c.key ? (
+                    <>
+                      <input
+                        type="text" value={editCatLabel} onChange={e => setEditCatLabel(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleUpdateCategory(c.key); if (e.key === 'Escape') setEditingCatKey(null); }}
+                        autoFocus
+                        className={`flex-1 rounded-lg px-2 py-1 text-xs outline-none border ${darkMode ? 'bg-slate-800 border-slate-600 text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                      />
+                      <button onClick={() => handleUpdateCategory(c.key)} className="text-emerald-400 hover:text-emerald-300 text-[11px] font-medium">save</button>
+                      <button onClick={() => setEditingCatKey(null)} className="text-slate-400 hover:text-slate-300 text-[11px] font-medium">cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1">{c.label}</span>
+                      <span className="text-[10px] opacity-40">{c.key}</span>
+                      <button onClick={() => { setEditingCatKey(c.key); setEditCatLabel(c.label); }} className="text-indigo-400 hover:text-indigo-300 text-[11px] font-medium">edit</button>
+                      <button onClick={() => handleDeleteCategory(c.key)} className="text-rose-400 hover:text-rose-300 text-[11px] font-medium">remove</button>
+                    </>
                   )}
                 </div>
               ))}
@@ -565,7 +604,7 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-0.5 lg:gap-1">
             {Array.from({ length: firstDayOfWeek }, (_, i) => <div key={`e${i}`} className="aspect-square" />)}
             {calDays.map(d => {
               const iso = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -575,7 +614,7 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
                 <div
                   key={d}
                   onClick={() => setSelectedDay(selectedDay === iso ? null : iso)}
-                  className={`aspect-square rounded-xl p-1 flex flex-col overflow-hidden transition-all cursor-pointer ${selectedDay === iso ? (darkMode ? 'ring-2 ring-indigo-400 bg-indigo-500/10' : 'ring-2 ring-indigo-500 bg-indigo-100') : isToday ? (darkMode ? 'ring-1 ring-indigo-500/30 bg-indigo-500/5' : 'ring-1 ring-indigo-300 bg-indigo-50') : (darkMode ? 'hover:bg-white/[0.04] hover:ring-1 hover:ring-white/10' : 'hover:bg-slate-50 hover:ring-1 hover:ring-slate-200')}`}>
+                  className={`aspect-square rounded-lg lg:rounded-xl p-0.5 lg:p-1 flex flex-col overflow-hidden transition-all cursor-pointer ${selectedDay === iso ? (darkMode ? 'ring-2 ring-indigo-400 bg-indigo-500/10' : 'ring-2 ring-indigo-500 bg-indigo-100') : isToday ? (darkMode ? 'ring-1 ring-indigo-500/30 bg-indigo-500/5' : 'ring-1 ring-indigo-300 bg-indigo-50') : (darkMode ? 'hover:bg-white/[0.04]' : 'hover:bg-slate-50')}`}>
                   <span className={`text-[11px] font-semibold self-end mb-0.5 px-1 ${isToday ? (darkMode ? 'text-indigo-400' : 'text-indigo-600') : (darkMode ? 'text-slate-400' : 'text-slate-600')}`}>{d}</span>
                   <div className="flex-1 space-y-0.5 overflow-hidden">
                     {dayTasks.slice(0, 3).map(t => (
@@ -657,7 +696,7 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
                     <div className="space-y-2 mt-2">
                       {group.tasks.map(task => (
                         <article key={task.id} className={`rounded-2xl border p-4 shadow-sm ${task.status === 'overdue' ? (darkMode ? 'border-red-500/20 bg-red-500/[0.03]' : 'border-red-200 bg-red-50') : (darkMode ? 'border-white/10 bg-[#1a1d23]/75' : 'border-white/70 bg-white/70')}`}>
-                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="font-bold text-slate-900 dark:text-slate-100 truncate">{task.title}</h4>
