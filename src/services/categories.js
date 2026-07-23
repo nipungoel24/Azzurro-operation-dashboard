@@ -1,7 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 
-const CATEGORIES_PATH = path.join(process.cwd(), 'data', 'categories.json');
+const isVercel = !!process.env.VERCEL || process.env.NODE_ENV === 'production';
+const CATEGORIES_PATH = isVercel
+  ? path.join(os.tmpdir(), 'azzurro-categories.json')
+  : path.join(process.cwd(), 'data', 'categories.json');
 
 const DEFAULTS = [
   { key: 'bathroom_deep_clean', label: 'Bathroom Deep Clean', icon: 'shower', sortOrder: 10 },
@@ -35,8 +39,12 @@ export async function getCategories() {
 }
 
 async function writeCategories(categories) {
-  await ensureDir();
-  await fs.writeFile(CATEGORIES_PATH, JSON.stringify(categories, null, 2), 'utf-8');
+  try {
+    await ensureDir();
+    await fs.writeFile(CATEGORIES_PATH, JSON.stringify(categories, null, 2), 'utf-8');
+  } catch {
+    // Vercel serverless may not persist writes — silently ignore
+  }
 }
 
 export async function addCategory({ key, label, icon = 'build' }) {
