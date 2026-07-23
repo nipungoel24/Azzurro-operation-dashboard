@@ -7,7 +7,8 @@ const TASK_STATUSES = ['scheduled', 'in_progress', 'completed', 'incomplete', 'c
 const TASK_CATEGORIES = [
   'bathroom_deep_clean', 'vent_cleaning', 'general_cleaning', 'night_shift',
   'cockroach_spraying', 'ac_check', 'hardware_check', 'supplies',
-  'laundry_pod', 'go_key_charge', 'bed_frame_check', 'curtain_rod_check', 'other',
+  'laundry_pod', 'go_key_charge', 'bed_frame_check', 'curtain_rod_check',
+  'overnight_maintenance', 'other',
 ];
 const SHIFTS = ['morning', 'afternoon', 'night', 'overnight'];
 
@@ -324,34 +325,40 @@ export async function generateVentCleaningTasks(user, {
 // ── Empty-room task generation ────────────────────────────────────────
 
 export async function generateEmptyRoomTasks(user, {
-  emptyRooms = [], taskCategory = 'cockroach_spraying', shift = 'night',
+  emptyRooms = [], taskCategory = 'overnight_maintenance', shift = 'overnight',
 } = {}) {
   const createdTasks = [];
   const dateStr = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' })).toISOString().split('T')[0];
+
+  const seenRooms = new Set();
 
   for (const prop of emptyRooms) {
     const propertyName = prop.propertyName;
 
     for (const room of (prop.emptyRooms || [])) {
-      const key = recurrenceKey(taskCategory, propertyName, room.roomName, dateStr, shift);
+      const baseRoomName = room.roomName.replace(/\.\d+$/, '');
+      const dedupeKey = `${propertyName}:${baseRoomName}:${dateStr}`;
+
+      if (seenRooms.has(dedupeKey)) continue;
+      seenRooms.add(dedupeKey);
 
       const dup = await prisma.scheduledTask.findFirst({
-        where: { category: taskCategory, scheduledStart: dateStr, roomId: room.roomName, propertyName },
+        where: { category: taskCategory, scheduledStart: dateStr, roomId: { in: [room.roomName, baseRoomName] }, propertyName },
       });
       if (dup) continue;
 
-      const titlePrefix = taskCategory === 'cockroach_spraying' ? 'Cockroach Spray' :
-        taskCategory === 'ac_check' ? 'AC Check' :
-        taskCategory === 'night_shift' ? 'Night Check' : 'Room Task';
+      const titlePrefix = taskCategory === 'cockroach_spraying' ? 'Overnight Pest Control' :
+        taskCategory === 'overnight_maintenance' ? 'Overnight Maintenance' :
+        taskCategory === 'ac_check' ? 'Overnight AC Check' : 'Room Task';
 
       const task = await createScheduledTask({
-        title: `${titlePrefix}: Room ${room.roomName} @ ${propertyName}`,
-        description: `Auto-generated ${taskCategory.replace(/_/g, ' ')} task for empty room ${room.roomName}.`,
-        category: taskCategory,
+        title: `${titlePrefix}: Room ${baseRoomName} @ ${propertyName}`,
+        description: `Auto-generated overnight maintenance task for room ${baseRoomName} at ${propertyName}.`,
+        category: 'overnight_maintenance',
         propertyName,
-        roomId: room.roomName,
+        roomId: baseRoomName,
         scheduledStart: dateStr,
-        shift,
+        shift: 'overnight',
         priority: 'medium',
         generatedSource: 'cloudbeds_sync',
       }, { email: user.email, name: user.name || user.email });

@@ -164,6 +164,11 @@ export default function Sidebar({
           {!sidebarCollapsed && <span className="animate-fade-in font-medium">Activity History</span>}
         </button>
 
+        <button onClick={() => setActiveView("guide")} className={sidebarBtn(activeView === 'guide')} title="Usage Guide">
+          <NavIcon name="book" />
+          {!sidebarCollapsed && <span className="animate-fade-in font-medium">Usage Guide</span>}
+        </button>
+
         {!sidebarCollapsed && (
           <div className="mt-8 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 px-3 animate-fade-in">Actions</div>
         )}

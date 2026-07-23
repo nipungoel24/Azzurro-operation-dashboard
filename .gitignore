@@ -54,3 +54,4 @@ dev.db-journal
 # tests (WIP)
 /tests/
 vitest.config.mts
+data/

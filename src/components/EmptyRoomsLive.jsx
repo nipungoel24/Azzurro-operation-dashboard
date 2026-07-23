@@ -47,19 +47,20 @@ export default function EmptyRoomsLive({ darkMode }) {
     }
   };
 
-  const handleGenerateTasks = async (propertyName, taskCategory = 'cockroach_spraying') => {
-    if (!confirm(`Create ${taskCategory === 'cockroach_spraying' ? 'cockroach spraying' : 'room check'} tasks for all empty rooms at ${propertyName}?`)) return;
+  const handleGenerateTasks = async (propertyName, taskCategory = 'overnight_maintenance') => {
+    const label = taskCategory === 'cockroach_spraying' ? 'overnight pest control' : 'overnight room check';
+    if (!confirm(`Create ${label} tasks for all empty rooms at ${propertyName}?`)) return;
     setSyncing(true);
     try {
       const res = await fetch('/api/empty-rooms/generate-tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propertyName, taskCategory, shift: 'night' }),
+        body: JSON.stringify({ propertyName, taskCategory, shift: 'overnight' }),
       });
       const data = await res.json();
       if (data.success) {
         alert(`Created ${data.count} task(s) for ${propertyName}.`);
-        fetchEmptyRooms();
+        fetchEmptyRooms(true);
       } else {
         setError(data.error);
       }
@@ -168,10 +169,24 @@ export default function EmptyRoomsLive({ darkMode }) {
                   </div>
                   <div className="flex gap-2 mt-3">
                     <button onClick={() => handleGenerateTasks(prop.propertyName, 'cockroach_spraying')} className="rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-500 hover:bg-amber-500/20" disabled={syncing}>
-                      Generate Cockroach Spray Tasks
+                      Overnight Pest Control
                     </button>
-                    <button onClick={() => handleGenerateTasks(prop.propertyName, 'other')} className="rounded-xl bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-400 hover:bg-indigo-500/20" disabled={syncing}>
-                      Generate Room Check Tasks
+                    <button onClick={() => handleGenerateTasks(prop.propertyName, 'overnight_maintenance')} className="rounded-xl bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-400 hover:bg-indigo-500/20" disabled={syncing}>
+                      Overnight Room Check
+                    </button>
+                  </div>
+                </div>
+              ) : prop.roomSummary ? (
+                <div>
+                  <div className={`rounded-xl border p-4 ${darkMode ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{prop.roomSummary}</p>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => handleGenerateTasks(prop.propertyName, 'cockroach_spraying')} className="rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-500 hover:bg-amber-500/20" disabled={syncing}>
+                      Overnight Pest Control
+                    </button>
+                    <button onClick={() => handleGenerateTasks(prop.propertyName, 'overnight_maintenance')} className="rounded-xl bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-400 hover:bg-indigo-500/20" disabled={syncing}>
+                      Overnight Room Check
                     </button>
                   </div>
                 </div>

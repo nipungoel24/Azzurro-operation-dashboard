@@ -339,14 +339,22 @@ async function cbFetchProperty(prop, dateStr) {
   }
 }
 
+function getBaseRoomName(roomName) {
+  if (!roomName) return roomName;
+  const m = roomName.match(/^(.*?)\.(\d+)$/);
+  if (m && m[2].length <= 2) return m[1];
+  return roomName;
+}
+
 function cbProcessProperty(p, dateStr) {
   const roomTypeMap = {}, blockedTypeMap = {};
-  const seenIds = new Set();
+  const seenRooms = new Set(), seenBlockedRooms = new Set();
   let totalBlockedUnique = 0, testRoomsCount = 0, privateRoomsCount = 0;
   const isHotelMode = p.propertyType === 'hotel';
 
   for (const r of (p.allRooms || [])) {
     const rName = r.roomName || '';
+    const baseName = isHotelMode ? rName : getBaseRoomName(rName);
     const rtName = r.roomTypeName || 'Other';
     const rId = r.roomID;
     const isBlocked = r.roomBlocked === true;
@@ -361,13 +369,15 @@ function cbProcessProperty(p, dateStr) {
       privateRoomsCount++;
       continue;
     }
-    if (isBlocked && !seenIds.has(rId)) { totalBlockedUnique++; seenIds.add(rId); }
     if (isBlocked) {
+      if (!seenBlockedRooms.has(baseName)) { totalBlockedUnique++; seenBlockedRooms.add(baseName); }
       if (!blockedTypeMap[rtName]) blockedTypeMap[rtName] = [];
-      blockedTypeMap[rtName].push(rName);
+      if (!blockedTypeMap[rtName].includes(baseName)) blockedTypeMap[rtName].push(baseName);
     } else {
+      if (seenRooms.has(baseName)) continue;
+      seenRooms.add(baseName);
       if (!roomTypeMap[rtName]) roomTypeMap[rtName] = [];
-      roomTypeMap[rtName].push(rName);
+      roomTypeMap[rtName].push(baseName);
     }
   }
 
@@ -377,10 +387,17 @@ function cbProcessProperty(p, dateStr) {
 
   const tonightActive = (p.tonightReservations || []).filter(r => isActiveBooking(r));
   const occupied = tonightActive.reduce((sum, r) => sum + ((r.rooms || []).length || 1), 0);
-  const apiSuspect = p.tonightFetchFailed === true || (occupied === 0 && (bedsVacant ?? 0) < p.capacity);
+
+  const dashOccupied = p.dashboard?.occupiedBeds != null ? Number(p.dashboard.occupiedBeds) : null;
+  const dashTotal = p.dashboard?.capacity != null ? Number(p.dashboard.capacity) : null;
+  const effectiveOccupied = occupied > 0 ? occupied : (dashOccupied || 0);
+  const effectiveCapacity = p.capacity > 0 ? p.capacity : (dashTotal || p.capacity);
+
+  const apiSuspect = p.tonightFetchFailed === true ||
+    (effectiveOccupied === 0 && (bedsVacant ?? effectiveCapacity) < effectiveCapacity);
   const roomsSuspect = p.roomsFetchFailed === true;
-  const bedsLeft = Math.max(0, p.capacity - occupied);
-  const occupancy = p.capacity > 0 ? (occupied / p.capacity) * 100 : 0;
+  const bedsLeft = Math.max(0, effectiveCapacity - effectiveOccupied);
+  const occupancy = effectiveCapacity > 0 ? (effectiveOccupied / effectiveCapacity) * 100 : 0;
 
   const allRooms = [];
   for (const [rtName, rooms] of Object.entries(roomTypeMap)) {
@@ -402,10 +419,24 @@ function cbProcessProperty(p, dateStr) {
     ))
   );
 
+  let roomSummary = null;
+  if (allRooms.length === 0 && p.propertyType === 'hotel' && p.dashboard) {
+    const dash = p.dashboard;
+    const summaryLines = [];
+    if (dash.occupiedRooms != null) summaryLines.push(`${dash.occupiedRooms} occupied`);
+    if (dash.availableRooms != null) summaryLines.push(`${dash.availableRooms} available`);
+    if (dash.totalRooms != null) summaryLines.push(`${dash.totalRooms} total rooms`);
+    if (dash.occupiedBeds != null) summaryLines.push(`${dash.occupiedBeds} occupied beds`);
+    if (dash.availableBeds != null) summaryLines.push(`${dash.availableBeds} beds available`);
+    if (summaryLines.length > 0) {
+      roomSummary = `Hotel occupancy summary | ${summaryLines.join(' | ')}`;
+    }
+  }
+
   return {
     id: p.id,
     name: p.name,
-    capacity: p.capacity,
+    capacity: effectiveCapacity,
     propertyType: p.propertyType || 'hostel',
     occupancy,
     bedsLeft,
@@ -416,13 +447,14 @@ function cbProcessProperty(p, dateStr) {
     fetchError: p.fetchError || p.roomsErrorDetail || null,
     emptyRooms,
     tonightReservations,
-    occupiedBeds: occupied,
+    occupiedBeds: effectiveOccupied,
     blockedRoomsCount: totalBlockedUnique,
     testRoomsCount,
     privateRoomsCount,
     availableRoomTypes: Object.fromEntries(Object.entries(roomTypeMap).map(([k, v]) => [k, v.length])),
     availableRoomDetails: roomTypeMap,
     dashboardRaw: p.dashboardRaw || null,
+    roomSummary: roomSummary || null,
   };
 }
 
@@ -477,6 +509,7 @@ export async function fetchEmptyRooms(dateStr, forceRefresh = false) {
     })),
     availableRoomTypes: p.availableRoomTypes,
     dashboardRaw: p.dashboardRaw || null,
+    roomSummary: p.roomSummary || null,
   }));
 
   roomCache.data = result;

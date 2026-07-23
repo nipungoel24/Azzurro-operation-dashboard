@@ -12,7 +12,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { propertyName, taskCategory = 'cockroach_spraying', shift = 'night' } = body;
+    const { propertyName, taskCategory = 'overnight_maintenance', shift = 'overnight' } = body;
 
     if (!propertyName) {
       return NextResponse.json({ error: 'propertyName is required' }, { status: 400 });

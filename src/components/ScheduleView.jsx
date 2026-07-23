@@ -9,6 +9,7 @@ const CATEGORIES = [
   { value: 'vent_cleaning', label: 'Vent Cleaning' },
   { value: 'general_cleaning', label: 'General Cleaning' },
   { value: 'night_shift', label: 'Night Shift' },
+  { value: 'overnight_maintenance', label: 'Overnight Maintenance' },
   { value: 'cockroach_spraying', label: 'Cockroach Spraying' },
   { value: 'ac_check', label: 'AC Check' },
   { value: 'hardware_check', label: 'Hardware Check' },
@@ -48,6 +49,9 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
   const [editTask, setEditTask] = useState(null);
   const [updateModal, setUpdateModal] = useState(null);
   const [updateText, setUpdateText] = useState('');
+  const [dynamicCategories, setDynamicCategories] = useState(CATEGORIES);
+  const [showCategoryEditor, setShowCategoryEditor] = useState(false);
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
   // Calendar state
@@ -79,6 +83,13 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
   useEffect(() => { (async () => { setLoading(true); await fetchTasks(); setLoading(false); })(); }, [fetchTasks]);
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  useEffect(() => {
+    fetch('/api/categories')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length) setDynamicCategories(data); })
+      .catch(() => {});
+  }, []);
 
   const handleAssign = async (formData) => {
     try {
@@ -185,6 +196,60 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
     });
     fetchTasks();
     showToast('Follow-up shift created');
+  };
+
+  const handleDelete = async (taskId, taskTitle) => {
+    if (!confirm(`Delete task "${taskTitle}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/scheduled-tasks/${taskId}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Task deleted');
+        fetchTasks();
+      } else {
+        const d = await res.json();
+        showToast(d.error || 'Failed to delete');
+      }
+    } catch { showToast('Network error'); }
+  };
+
+  const handleAddCategory = async () => {
+    const label = newCategoryLabel.trim();
+    if (!label) return;
+    const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, label }),
+      });
+      if (res.ok) {
+        const cat = await res.json();
+        setDynamicCategories(prev => [...prev, cat]);
+        setNewCategoryLabel('');
+        setShowCategoryEditor(false);
+        showToast('Category added');
+      } else {
+        const d = await res.json();
+        showToast(d.error || 'Failed');
+      }
+    } catch { showToast('Network error'); }
+  };
+
+  const handleDeleteCategory = async (key) => {
+    if (!confirm('Delete this category?')) return;
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      if (res.ok) {
+        setDynamicCategories(prev => prev.filter(c => c.key !== key));
+        if (filterCategory === key) setFilterCategory('');
+        showToast('Category deleted');
+      } else {
+        const d = await res.json();
+        showToast(d.error || 'Failed');
+      }
+    } catch { showToast('Network error'); }
   };
 
   const handleStatus = async (id, newStatus) => {
@@ -445,10 +510,40 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
             {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
           <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className={`rounded-xl px-3 py-2 text-sm outline-none border ${darkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            <option value="">All Categories</option>
+            {dynamicCategories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
+          <button onClick={() => setShowCategoryEditor(!showCategoryEditor)} title="Manage categories" className={`rounded-xl px-2.5 py-2 text-sm border transition-all ${darkMode ? 'border-white/10 text-slate-400 hover:text-white hover:bg-white/5' : 'border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
+            <span className="material-symbols-outlined select-none text-[18px]">{showCategoryEditor ? 'close' : 'edit'}</span>
+          </button>
           <span className={`text-sm self-center ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tasks.length} tasks</span>
         </div>
+
+        {showCategoryEditor && (
+          <div className={`mt-3 p-4 rounded-2xl border ${darkMode ? 'border-white/[0.06] bg-white/[0.03]' : 'border-slate-100 bg-slate-50/50'}`}>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Manage Categories</p>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text" value={newCategoryLabel} onChange={e => setNewCategoryLabel(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
+                placeholder="New category name..."
+                className={`flex-1 rounded-xl px-3 py-2 text-sm outline-none border ${darkMode ? 'bg-slate-900 border-slate-700 text-slate-200 placeholder:text-slate-600' : 'bg-white border-slate-200 text-slate-800'}`}
+              />
+              <button onClick={handleAddCategory} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Add</button>
+            </div>
+            <div className="space-y-1">
+              {dynamicCategories.map(c => (
+                <div key={c.key} className={`flex items-center gap-2 text-[12px] px-2 py-1 rounded-lg ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  <span className="flex-1">{c.label}</span>
+                  <span className="text-[10px] opacity-40">{c.key}</span>
+                  {!['bathroom_deep_clean','vent_cleaning','general_cleaning','night_shift','overnight_maintenance','cockroach_spraying','ac_check','hardware_check','supplies','bed_frame_check','curtain_rod_check','other'].includes(c.key) && (
+                    <button onClick={() => handleDeleteCategory(c.key)} className="text-rose-400 hover:text-rose-300 text-[11px] font-medium">remove</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/*─ Calendar View ──*/}
@@ -589,6 +684,9 @@ export default function ScheduleView({ darkMode, scheduleExportRef }) {
                             <div className="flex gap-2 flex-shrink-0 flex-wrap items-center">
                               <button onClick={() => setEditTask(task)} className="rounded-xl bg-indigo-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-all active:scale-[0.97] border border-indigo-500/20" title="Edit task">
                                 <span className="material-symbols-outlined select-none text-[14px]">edit</span>
+                              </button>
+                              <button onClick={() => handleDelete(task.id, task.title)} className="rounded-xl bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-all active:scale-[0.97] border border-rose-500/20" title="Delete task">
+                                <span className="material-symbols-outlined select-none text-[14px]">delete</span>
                               </button>
                               <button onClick={() => { setUpdateModal(task.id); setUpdateText(''); }} className="rounded-xl bg-cyan-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20 transition-all active:scale-[0.97] border border-cyan-500/20" title="Add update">
                                 <span className="material-symbols-outlined select-none text-[14px]">chat</span>

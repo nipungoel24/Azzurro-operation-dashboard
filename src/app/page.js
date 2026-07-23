@@ -20,6 +20,7 @@ import PropertyInventory from "../components/PropertyInventory";
 import RoomInventory from "../components/RoomInventory";
 import BathroomInventory from "../components/BathroomInventory";
 import ReviewQueue from "../components/ReviewQueue";
+import GuideBook from "../components/GuideBook";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -1032,6 +1033,8 @@ export default function Home() {
             <BathroomInventory darkMode={darkMode} />
           ) : activeView === "review-queue" ? (
             <ReviewQueue darkMode={darkMode} />
+          ) : activeView === "guide" ? (
+            <GuideBook darkMode={darkMode} />
           ) : (
             <ScheduleView darkMode={darkMode} scheduleExportRef={scheduleExportRef} />
           )}

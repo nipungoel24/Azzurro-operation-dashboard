@@ -68,7 +68,7 @@ RULES:
 4. Parse "today", "tomorrow", "tonight" relative to Australia/Sydney timezone
 5. "tonight" = night shift today, "next Monday" = the upcoming Monday
 6. Property names: Potts Point, Surry Hills, Darling Harbour, Central Sydney, The Pyrmont Budget Hotel, Olympic Hotel
-7. Task categories: bathroom_deep_clean, vent_cleaning, general_cleaning, night_shift, cockroach_spraying, ac_check, hardware_check, supplies, laundry_pod, go_key_charge, bed_frame_check, curtain_rod_check, other
+7. Task categories: bathroom_deep_clean, vent_cleaning, general_cleaning, night_shift, overnight_maintenance, cockroach_spraying, ac_check, hardware_check, supplies, laundry_pod, go_key_charge, bed_frame_check, curtain_rod_check, other
 8. Shifts: morning, afternoon, night, overnight
 9. If you cannot determine intent, ask for clarification via the message field
 10. Never invent room numbers, staff names, or facility counts
@@ -242,11 +242,7 @@ export async function processChatMessage(message, userEmail, userName) {
     aiResponse = await callDeepSeek(message, context);
   } catch (err) {
     console.error('[Chatbot] DeepSeek API error:', err.message);
-    let msg = err.message || 'Failed to get response from AI. Please try again.';
-    if (msg.includes('image') || msg.includes('not support image')) {
-      msg = 'This model only supports text. Please describe your request without referencing image files.';
-    }
-    return { action: 'error', message: msg };
+    return { action: 'error', message: err.message || 'Failed to get response from AI. Please try again.' };
   }
 
   let parsed;
@@ -289,29 +285,36 @@ async function callDeepSeek(message, context) {
   const sanitized = message
     .replace(/```[\s\S]*?```/g, '[block removed]')
     .replace(/!\[.*?\]\(.*?\)/g, '[removed]')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')  // strip markdown links, keep text
     .replace(/\bhttps?:\/\/\S+/g, '[link removed]')
-    .replace(/["']?\S+\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw)["']?/gi, '[file removed]')
-    .replace(/\b\S+\/(\S+\.(png|jpe?g|gif|svg|webp|bmp))\b/gi, '[file removed]');
+    .replace(/\b\S+\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw|pdf|docx?|xlsx?|pptx?)\b/gi, '[file removed]')
+    .replace(/\bdata:image\/\S+/gi, '[data uri removed]')
+    .replace(/["']\S+\.(png|jpe?g|gif|svg|webp|bmp)["']/gi, '"[file removed]"');
 
   const contextBlock = context ? JSON.stringify(context, null, 2) : '';
 
-  const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'system', content: `Current operational context (use this data for accurate responses):\n${contextBlock}` },
-        { role: 'user', content: sanitized },
-      ],
-      temperature: 0.3,
-      max_tokens: 3000,
-    }),
-  });
+  let response;
+  try {
+    response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: `Current operational context:\n${contextBlock}` },
+          { role: 'user', content: sanitized },
+        ],
+        temperature: 0.3,
+        max_tokens: 3000,
+      }),
+    });
+  } catch (err) {
+    throw new Error(`Network error: ${err.message}`);
+  }
 
   if (!response.ok) {
     let errorText = '';
@@ -320,6 +323,9 @@ async function callDeepSeek(message, context) {
       errorText = errData.error?.message || errData.message || JSON.stringify(errData);
     } catch {
       errorText = await response.text();
+    }
+    if (/image|unsupported.*media|not.*support/i.test(errorText)) {
+      throw new Error('This model only supports text. Please describe your request without referencing image files.');
     }
     throw new Error(`API error (${response.status}): ${errorText}`);
   }
