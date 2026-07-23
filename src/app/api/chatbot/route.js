@@ -40,6 +40,9 @@ export async function POST(request) {
 
     return NextResponse.json(result);
   } catch (err) {
+    if (err.message && /image|png|jpg|jpeg|does not support/i.test(err.message)) {
+      return NextResponse.json({ error: true, message: 'Text only please. Describe your request in words.' });
+    }
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

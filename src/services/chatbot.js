@@ -274,10 +274,12 @@ export async function processChatMessage(message, userEmail, userName) {
 }
 
 async function callDeepSeek(message, context) {
-  const userMsg = message.trim();
-  if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)\b/i.test(userMsg) || userMsg.toLowerCase().includes('image')) {
-    throw new Error('IMAGE_NOT_SUPPORTED');
-  }
+  let sanitized = message
+    .replace(/```[\s\S]*?```/g, '[code block removed]')
+    .replace(/!\[.*?\]\(.*?\)/g, '[image removed]')
+    .replace(/\bhttps?:\/\/\S+/g, '[link removed]')
+    .replace(/\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|heic|tiff|raw|pdf|docx?|xlsx?)\b/gi, '')
+    .replace(/\b(screenshot|image\.png|upload|image file|picture|photo)\b/gi, 'text');
 
   const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -289,8 +291,7 @@ async function callDeepSeek(message, context) {
       model: 'deepseek-chat',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'system', content: `Context: ${JSON.stringify(context)}` },
-        { role: 'user', content: message },
+        { role: 'user', content: sanitized },
       ],
       temperature: 0.3,
       max_tokens: 2000,

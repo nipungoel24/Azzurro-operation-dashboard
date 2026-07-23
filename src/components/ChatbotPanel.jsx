@@ -33,7 +33,11 @@ export default function ChatbotPanel({ darkMode, onClose }) {
         setPendingConfirmation({ action: data.action, params: data.params });
         addMessage('bot', 'This action needs confirmation.', { confirmable: true });
       } else if (data.error) {
-        addMessage('bot', data.message || 'An error occurred.');
+        const msg = typeof data.error === 'string' ? data.error : (data.message || 'An error occurred.');
+        const clean = /image|png|jpg|does not support/i.test(msg)
+          ? 'Text only please. Describe your request in words.'
+          : msg;
+        addMessage('bot', clean);
       } else {
         addMessage('bot', data.message, { result: data.result, action: data.action });
       }
