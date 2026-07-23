@@ -275,9 +275,19 @@ export async function processChatMessage(message, userEmail, userName) {
 
 async function callDeepSeek(message, context) {
   const userMsg = message.trim();
-  if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)\b/i.test(userMsg) || userMsg.toLowerCase().includes('image')) {
+
+  // Block any message containing image/file references
+  if (/\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|heic|tiff|raw)\b|\[image/i.test(userMsg)) {
     throw new Error('IMAGE_NOT_SUPPORTED');
   }
+
+  // Sanitize context: strip anything that looks like a file path or image reference
+  const safeContext = JSON.parse(JSON.stringify(context, (key, val) => {
+    if (typeof val === 'string' && /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|heic|tiff|raw)\b/i.test(val)) {
+      return val.replace(/\.[a-z0-9]+$/i, '');
+    }
+    return val;
+  }));
 
   const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -289,7 +299,7 @@ async function callDeepSeek(message, context) {
       model: 'deepseek-chat',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'system', content: `Context: ${JSON.stringify(context)}` },
+        { role: 'system', content: `Context: ${JSON.stringify(safeContext)}` },
         { role: 'user', content: message },
       ],
       temperature: 0.3,
