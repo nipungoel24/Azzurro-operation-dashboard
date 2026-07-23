@@ -285,11 +285,10 @@ async function callDeepSeek(message, context) {
   const sanitized = message
     .replace(/```[\s\S]*?```/g, '[block removed]')
     .replace(/!\[.*?\]\(.*?\)/g, '[removed]')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')  // strip markdown links, keep text
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
     .replace(/\bhttps?:\/\/\S+/g, '[link removed]')
-    .replace(/\b\S+\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw|pdf|docx?|xlsx?|pptx?)\b/gi, '[file removed]')
-    .replace(/\bdata:image\/\S+/gi, '[data uri removed]')
-    .replace(/["']\S+\.(png|jpe?g|gif|svg|webp|bmp)["']/gi, '"[file removed]"');
+    .replace(/\b\S*\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|heic|heif|raw|pdf|docx?|xlsx?|pptx?)\b/gi, '[file removed]')
+    .replace(/\bdata:image\/\S+/gi, '[data uri removed]');
 
   const contextBlock = context ? JSON.stringify(context, null, 2) : '';
 
@@ -331,12 +330,32 @@ async function callDeepSeek(message, context) {
   }
 
   const data = await response.json();
+
+  // DeepSeek sometimes returns 200 with an error object
+  if (data.error) {
+    const errMsg = data.error?.message || data.error?.code || JSON.stringify(data.error);
+    if (/image|unsupported.*media|not.*support/i.test(errMsg)) {
+      throw new Error('This model only supports text. Please describe your request without referencing image files.');
+    }
+    throw new Error(`DeepSeek API error: ${errMsg}`);
+  }
+
   const content = data.choices?.[0]?.message?.content || '';
 
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  if (/cannot read.*\.(png|jpe?g|gif|svg|webp)/i.test(content) || /not support image/i.test(content)) {
+    return { action: 'respond', message: 'This model only supports text. Please describe your request without referencing image files.' };
+  }
 
-  throw new Error('No valid JSON found in AI response');
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (parsed.params?.message && /cannot read.*image/i.test(parsed.params.message)) {
+      return { action: 'respond', message: 'This model only supports text. Please describe your request without referencing image files.' };
+    }
+    return parsed;
+  }
+
+  return { action: 'respond', message: content };
 }
 
 async function buildContext(user) {
@@ -673,11 +692,12 @@ export async function executeAction(action, params, user, summaryMessage) {
       }
       case 'generate_bathroom_tasks': {
         const { generateBathroomDeepCleanTasks } = await import('./scheduling');
-        result = await generateBathroomDeepCleanTasks(
+        const bathOutput = await generateBathroomDeepCleanTasks(
           { email: user.email, name: user.name || user.email },
           { propertyCode: params.propertyCode || null, dateStr: params.dateStr || null, bathroomsPerCleaner: params.bathroomsPerCleaner || 1 }
         );
-        message = `Generated ${result.length} bathroom deep clean task(s).`;
+        message = `Generated ${bathOutput.tasks?.length || 0} bathroom deep clean task(s)${bathOutput.skippedEnsuite ? ` (${bathOutput.skippedEnsuite} ensuite skipped — rooms occupied)` : ''}.`;
+        result = bathOutput.tasks || [];
         break;
       }
       case 'generate_vent_tasks': {
