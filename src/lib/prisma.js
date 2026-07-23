@@ -14,20 +14,6 @@ const DEFAULT_PROPERTIES = [
 
 async function ensureDatabaseReady(client) {
   try {
-    await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS User (
-      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
-      name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer'
-    )`);
-    await client.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS Property (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, code TEXT, address TEXT,
-      cloudbedsPropertyId TEXT, capacity INTEGER DEFAULT 0, timezone TEXT DEFAULT 'Australia/Sydney',
-      verificationStatus TEXT DEFAULT 'needs_verification', active INTEGER DEFAULT 1,
-      notes TEXT, createdAt TEXT DEFAULT (datetime('now')), updatedAt TEXT DEFAULT (datetime('now'))
-    )`);
-  } catch (err) {
-    console.error('[prisma] Schema init failed:', err.message);
-  }
-  try {
     const adminEmail = 'nipun24.goel@gmail.com';
     const existing = await client.user.findUnique({ where: { email: adminEmail } });
     if (!existing) {
