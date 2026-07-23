@@ -48,6 +48,7 @@ export default function ScheduleView({ darkMode }) {
   // Calendar state
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [selectedDay, setSelectedDay] = useState(null);
 
   const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
 
@@ -225,7 +226,10 @@ export default function ScheduleView({ darkMode }) {
               const dayTasks = tasksByDate[iso] || [];
               const isToday = iso === todayStr;
               return (
-                <div key={d} className={`aspect-square rounded-xl p-1 flex flex-col overflow-hidden transition-colors ${isToday ? (darkMode ? 'ring-2 ring-indigo-500/50 bg-indigo-500/5' : 'ring-2 ring-indigo-300 bg-indigo-50') : (darkMode ? 'hover:bg-white/[0.03]' : 'hover:bg-slate-50')}`}>
+                <div
+                  key={d}
+                  onClick={() => setSelectedDay(selectedDay === iso ? null : iso)}
+                  className={`aspect-square rounded-xl p-1 flex flex-col overflow-hidden transition-all cursor-pointer ${selectedDay === iso ? (darkMode ? 'ring-2 ring-indigo-400 bg-indigo-500/10' : 'ring-2 ring-indigo-500 bg-indigo-100') : isToday ? (darkMode ? 'ring-1 ring-indigo-500/30 bg-indigo-500/5' : 'ring-1 ring-indigo-300 bg-indigo-50') : (darkMode ? 'hover:bg-white/[0.04] hover:ring-1 hover:ring-white/10' : 'hover:bg-slate-50 hover:ring-1 hover:ring-slate-200')}`}>
                   <span className={`text-[11px] font-semibold self-end mb-0.5 px-1 ${isToday ? (darkMode ? 'text-indigo-400' : 'text-indigo-600') : (darkMode ? 'text-slate-400' : 'text-slate-600')}`}>{d}</span>
                   <div className="flex-1 space-y-0.5 overflow-hidden">
                     {dayTasks.slice(0, 3).map(t => (
@@ -240,24 +244,42 @@ export default function ScheduleView({ darkMode }) {
             })}
           </div>
 
-          {/* Day detail panel */}
-          {(() => {
-            const todayKey = todayStr;
-            const todayTasks = tasksByDate[todayKey] || [];
-            if (!todayTasks.length) return null;
+          {/* Selected day detail panel */}
+          {selectedDay && (() => {
+            const dayTasks = tasksByDate[selectedDay] || [];
+            const selDate = new Date(selectedDay + 'T00:00:00');
+            const formatted = selDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
             return (
               <div className={`mt-5 pt-4 border-t ${darkMode ? 'border-white/[0.06]' : 'border-slate-100'}`}>
-                <p className={`text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Today ({todayKey}) -- {todayTasks.length} tasks</p>
-                <div className="space-y-1">
-                  {todayTasks.map(t => (
-                    <div key={t.id} className={`flex items-center gap-2 text-[12px] px-3 py-2 rounded-xl ${darkMode ? 'bg-white/[0.03]' : 'bg-slate-50'}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.status === 'completed' ? 'bg-emerald-400' : t.status === 'overdue' ? 'bg-red-400' : t.status === 'incomplete' ? 'bg-rose-400' : t.status === 'in_progress' ? 'bg-amber-400' : 'bg-slate-400'}`} />
-                      <span className={`flex-1 font-medium ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{t.title}</span>
-                      <span className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.assigneeName || 'unassigned'}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${statusColor(t.status)}`}>{t.status.replace('_', ' ')}</span>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <p className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    {formatted} -- {dayTasks.length} task{dayTasks.length !== 1 ? 's' : ''}
+                  </p>
+                  <button onClick={() => setSelectedDay(null)} className={`p-1 rounded-lg hover:bg-white/5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <span className="material-symbols-outlined select-none text-base">close</span>
+                  </button>
                 </div>
+                {dayTasks.length === 0 ? (
+                  <div className={`text-center py-6 rounded-xl border border-dashed ${darkMode ? 'border-white/[0.06] text-slate-500' : 'border-slate-200 text-slate-400'}`}>
+                    <span className="material-symbols-outlined select-none text-2xl mb-1 block opacity-40">event_busy</span>
+                    <p className="text-xs">No activities scheduled for this day</p>
+                    <button onClick={() => { setAssignModal(true); }} className={`mt-2 text-[11px] font-semibold px-3 py-1.5 rounded-xl transition-colors ${darkMode ? 'bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                      + Assign Task
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {dayTasks.map(t => (
+                      <div key={t.id} className={`flex items-center gap-2.5 text-[12px] px-3 py-2 rounded-xl ${darkMode ? 'bg-white/[0.03]' : 'bg-slate-50'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.status === 'completed' ? 'bg-emerald-400' : t.status === 'overdue' ? 'bg-red-400' : t.status === 'incomplete' ? 'bg-rose-400' : t.status === 'in_progress' ? 'bg-amber-400' : 'bg-slate-400'}`} />
+                        <span className={`flex-1 font-medium truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{t.title}</span>
+                        <span className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.assigneeName || 'unassigned'}</span>
+                        <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>{t.shift}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${statusColor(t.status)}`}>{t.status.replace('_', ' ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
