@@ -271,7 +271,11 @@ export async function processChatMessage(message, userEmail, userName, history =
     aiResponse = await callDeepSeek(message, context, history);
   } catch (err) {
     console.error('[Chatbot] DeepSeek API error:', err.message);
-    return { action: 'error', message: err.message || 'Failed to get response from AI. Please try again.' };
+    const msg = err.message || '';
+    if (/image|png|jpg|jpeg|gif|svg|unsupported.*media|not.*support|cannot read/i.test(msg)) {
+      return { action: 'error', message: 'This model only supports text. Please describe your request without referencing files or images.' };
+    }
+    return { action: 'error', message: 'Failed to get response from AI. Please try again.' };
   }
 
   let parsed;
