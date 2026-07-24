@@ -2,18 +2,21 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
 const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
-const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
+const isPg = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
+const isSqlite = dbUrl.startsWith('file:');
 
 let prisma;
 
-if (isPostgres) {
-  const pg = require('pg');
+if (isPg) {
   const { PrismaPg } = require('@prisma/adapter-pg');
-  const pool = new pg.Pool({ connectionString: dbUrl });
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: dbUrl });
   prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
-} else {
+} else if (isSqlite) {
   const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
   prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbUrl }) });
+} else {
+  prisma = new PrismaClient();
 }
 
 const DEFAULT_PROPERTIES = [

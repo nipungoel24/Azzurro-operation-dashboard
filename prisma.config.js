@@ -9,6 +9,6 @@ const isVercel = process.env.VERCEL === '1';
 module.exports = defineConfig({
   schema: (isPostgres || isVercel) ? 'prisma/schema.postgresql.prisma' : 'prisma/schema.prisma',
   datasource: {
-    url: { value: dbUrl || 'file:./dev.db' },
+    url: process.env.DATABASE_URL ? { value: process.env.DATABASE_URL } : { value: 'file:./dev.db' },
   },
 });
