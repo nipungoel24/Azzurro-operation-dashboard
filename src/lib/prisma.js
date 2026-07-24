@@ -1,7 +1,10 @@
 export const dynamic = 'force-dynamic';
 
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 
+const _require = createRequire(import.meta.url);
 const globalForPrisma = global;
 
 function createClient() {
@@ -11,8 +14,8 @@ function createClient() {
 
   if (isPostgres) {
     try {
-      const pg = require('pg');
-      const { PrismaPg } = require('@prisma/adapter-pg');
+      const pg = _require('pg');
+      const { PrismaPg } = _require('@prisma/adapter-pg');
       const pool = new pg.Pool({
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
@@ -26,7 +29,7 @@ function createClient() {
 
   if (isSqlite) {
     try {
-      const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
+      const { PrismaBetterSqlite3 } = _require('@prisma/adapter-better-sqlite3');
       return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbUrl }) });
     } catch (e) {
       console.warn('[Prisma] SQLite adapter failed:', e.message);
