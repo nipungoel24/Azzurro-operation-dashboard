@@ -4,14 +4,6 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = global;
 
-function getPgPool() {
-  const { Pool } = require('pg');
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
-}
-
 function createClient() {
   const dbUrl = process.env.DATABASE_URL || '';
   const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
@@ -19,32 +11,33 @@ function createClient() {
 
   if (isPostgres) {
     try {
+      const pg = require('pg');
       const { PrismaPg } = require('@prisma/adapter-pg');
-      return new PrismaClient({ adapter: new PrismaPg(getPgPool()) });
-    } catch {}
+      const pool = new pg.Pool({
+        connectionString: dbUrl,
+        ssl: { rejectUnauthorized: false },
+        max: 5,
+      });
+      return new PrismaClient({ adapter: new PrismaPg(pool) });
+    } catch (e) {
+      console.warn('[Prisma] PG adapter failed:', e.message);
+    }
   }
 
   if (isSqlite) {
     try {
       const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
       return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbUrl }) });
-    } catch {}
+    } catch (e) {
+      console.warn('[Prisma] SQLite adapter failed:', e.message);
+    }
   }
 
   return new PrismaClient();
 }
 
-let _prisma = null;
-function getPrisma() {
-  if (_prisma) return _prisma;
-  _prisma = createClient();
-  return _prisma;
-}
-
-const handler = { get(_, prop) { return getPrisma()[prop]; } };
-
-export const prisma = globalForPrisma.prismaProxy || new Proxy({}, handler);
+export const prisma = globalForPrisma.prisma || createClient();
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prismaProxy = prisma;
+  globalForPrisma.prisma = prisma;
 }
